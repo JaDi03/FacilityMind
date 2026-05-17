@@ -125,6 +125,15 @@ def check_api_status():
     except:
         return False
 
+def check_lobster_status():
+    """Verifies that the Lobster Trap proxy is active."""
+    try:
+        # Check the dashboard or backend status
+        resp = requests.get("http://127.0.0.1:8080/_lobstertrap/", timeout=2)
+        return resp.status_code == 200
+    except:
+        return False
+
 def get_loaded_blueprints():
     try:
         resp = requests.get(API_BLUEPRINTS, timeout=2)
@@ -159,11 +168,21 @@ with st.sidebar:
     st.title("FacilityMind")
     st.markdown("Professional Facility Management AI")
     
-    status = check_api_status()
-    if status:
-        st.success("● API Online")
-    else:
-        st.error("● API Offline")
+    # Grid columns for status badges
+    col_status1, col_status2 = st.columns(2)
+    with col_status1:
+        status = check_api_status()
+        if status:
+            st.success("● API Online")
+        else:
+            st.error("● API Offline")
+            
+    with col_status2:
+        lobster_active = check_lobster_status()
+        if lobster_active:
+            st.success("🛡️ Lobster Active")
+        else:
+            st.warning("🛡️ Lobster Offline")
 
     st.divider()
     
