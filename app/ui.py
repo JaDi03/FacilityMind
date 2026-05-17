@@ -85,6 +85,20 @@ st.markdown("""
     .stChatMessage {
         padding: 0.75rem !important;
     }
+    /* Style Streamlit Tabs to make them much larger, modern and elegant */
+    div.stTabs [data-baseweb="tab-list"] button {
+        font-size: 1.2rem !important;
+        font-weight: 700 !important;
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+        padding-top: 0.75rem !important;
+        padding-bottom: 0.75rem !important;
+        color: #5f6368 !important;
+    }
+    div.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+        color: #1a73e8 !important;
+        border-bottom-color: #1a73e8 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -196,7 +210,7 @@ with st.sidebar:
     filtro_disciplina = None
 
 # ─── Main Interface ───
-tab1, tab2, tab3 = st.tabs(["💬 Chat", "🤖 Agent Pipeline", "📖 Technical Documentation"])
+tab1, tab2, tab3 = st.tabs(["Chat", "Agent Pipeline", "Technical Documentation"])
 
 with tab1:
     st.markdown('<p class="main-header">FacilityMind Intelligence</p>', unsafe_allow_html=True)
