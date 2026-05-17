@@ -44,24 +44,6 @@ def inspect_prompt(prompt: str) -> SecurityVerdict:
             intent_category="general", raw_metadata={}
         )
 
-    # --- Local Custom Intercept Rules (Perfect for Demo Precision) ---
-    prompt_lower = prompt.lower()
-    custom_blocked_keywords = [
-        "gemini api", "api key", "api_key", "access token", 
-        "system credential", "system password", "give me access"
-    ]
-    if any(kw in prompt_lower for kw in custom_blocked_keywords):
-        logger.warning(f"[Security] Local rule triggered. Blocked query: {prompt}")
-        return SecurityVerdict(
-            allowed=False,
-            action="DENY",
-            risk_score=1.0,
-            matched_rule="local_api_key_harvesting",
-            deny_message="[LOBSTER TRAP] Blocked: Unauthorized request for system API credentials/access.",
-            intent_category="credential_access",
-            raw_metadata={"local_trigger": True}
-        )
-
     try:
         result = subprocess.run(
             [str(LOBSTERTRAP_BIN), "inspect", "--policy", str(POLICY_PATH), "--json", prompt],
