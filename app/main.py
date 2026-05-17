@@ -248,6 +248,17 @@ async def eliminar_plano(plano_id: str):
     success = vector_store.delete_plano(plano_id)
     if success:
         planos_cargados.pop(plano_id, None)
+        
+        # Persist modified planos_cargados to disk after deletion
+        try:
+            import json
+            persisted_path = Path("data/processed/planos_cargados.json")
+            with open(persisted_path, "w", encoding="utf-8") as f:
+                json.dump(planos_cargados, f, indent=4)
+            logger.info(f"[API] Updated planos_cargados on disk after deleting {plano_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to update persisted planos_cargados: {e}")
+            
         return {"success": True, "message": f"Blueprint {plano_id} deleted"}
     else:
         raise HTTPException(404, f"Blueprint {plano_id} not found")

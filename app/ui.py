@@ -113,7 +113,7 @@ def get_loaded_blueprints():
     try:
         resp = requests.get(API_PLANOS, timeout=2)
         if resp.status_code == 200:
-            return resp.json().get("planos", [])
+            return resp.json().get("data", {}).get("planos_detalle", [])
         return []
     except:
         return []
@@ -160,6 +160,16 @@ with st.sidebar:
             with st.expander(f"📄 {bp['plano_id']}"):
                 st.caption(f"Type: {bp.get('tipo_plano', 'N/A')}")
                 st.caption(f"Pages: {bp.get('total_paginas', '?')}")
+                
+                # Delete Button
+                if st.button(f"🗑️ Delete {bp['plano_id']}", key=f"del_{bp['plano_id']}", type="secondary", use_container_width=True):
+                    with st.spinner("Deleting blueprint..."):
+                        resp = requests.delete(f"{API_PLANOS}/{bp['plano_id']}", timeout=10)
+                        if resp.status_code == 200:
+                            st.success("Deleted!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete")
     else:
         st.info("No blueprints loaded yet.")
 
@@ -212,38 +222,42 @@ with tab1:
             if "technical_data" in msg:
                 tech = msg["technical_data"]
                 
-                # Confidence Score
-                conf = tech.get("confidence", 0)
-                conf_class = "confidence-high" if conf > 0.8 else "confidence-medium" if conf > 0.5 else "confidence-low"
-                st.markdown(f"**System Confidence:** <span class='{conf_class}'>{conf*100:.0f}%</span>", unsafe_allow_html=True)
-                st.progress(conf)
-
-                # Sources
-                if tech.get("sources"):
-                    with st.expander("🔗 Verified Sources", expanded=False):
-                        for src in tech["sources"]:
-                            st.markdown(f"""
-                            <div class="source-box">
-                                <strong>{src['plano']} (Page {src['pagina']})</strong><br/>
-                                {src['texto_citado']}
-                            </div>
-                            """, unsafe_allow_html=True)
+                # Check if it's a direct conversational response
+                is_conversational = any("conversacional" in w.lower() for w in tech.get("warnings", []))
                 
-                # Visualization (Diagram)
-                if tech.get("visualization"):
-                    viz = tech["visualization"]
-                    with st.expander("📊 Technical Diagram", expanded=True):
-                        if viz.get("diagrama_mermaid"):
-                            render_mermaid(viz["diagrama_mermaid"])
-                        if viz.get("resumen_visual"):
-                            st.caption(f"**Description:** {viz['resumen_visual']}")
-                        if viz.get("imagen_generada") and os.path.exists(viz["imagen_generada"]):
-                            st.image(viz["imagen_generada"], use_container_width=True)
+                if not is_conversational:
+                    # Confidence Score
+                    conf = tech.get("confidence", 0)
+                    conf_class = "confidence-high" if conf > 0.8 else "confidence-medium" if conf > 0.5 else "confidence-low"
+                    st.markdown(f"**System Confidence:** <span class='{conf_class}'>{conf*100:.0f}%</span>", unsafe_allow_html=True)
+                    st.progress(conf)
 
-                # Warnings
-                if tech.get("warnings"):
-                    for warn in tech["warnings"]:
-                        st.markdown(f'<div class="warning-box">⚠️ {warn}</div>', unsafe_allow_html=True)
+                    # Sources
+                    if tech.get("sources"):
+                        with st.expander("🔗 Verified Sources", expanded=False):
+                            for src in tech["sources"]:
+                                st.markdown(f"""
+                                <div class="source-box">
+                                    <strong>{src['plano']} (Page {src['pagina']})</strong><br/>
+                                    {src['texto_citado']}
+                                </div>
+                                """, unsafe_allow_html=True)
+                    
+                    # Visualization (Diagram)
+                    if tech.get("visualization"):
+                        viz = tech["visualization"]
+                        with st.expander("📊 Technical Diagram", expanded=True):
+                            if viz.get("diagrama_mermaid"):
+                                render_mermaid(viz["diagrama_mermaid"])
+                            if viz.get("resumen_visual"):
+                                st.caption(f"**Description:** {viz['resumen_visual']}")
+                            if viz.get("imagen_generada") and os.path.exists(viz["imagen_generada"]):
+                                st.image(viz["imagen_generada"], use_container_width=True)
+
+                    # Warnings
+                    if tech.get("warnings"):
+                        for warn in tech["warnings"]:
+                            st.markdown(f'<div class="warning-box">⚠️ {warn}</div>', unsafe_allow_html=True)
 
     # Chat Input
     with st.container():
