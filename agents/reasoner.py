@@ -93,6 +93,22 @@ async def agente_razonador(
     if active_cache:
         plano_texto = ""
 
+    # --- SAFETY CHECK: Refuse to answer if no data is available ---
+    # If there's no cache, no RAG data, and no full blueprint text, 
+    # the model would hallucinate a complete answer. Abort early.
+    if not active_cache and len(contexto_rag.strip()) == 0 and len(plano_texto.strip()) == 0:
+        logger.warning("[Reasoner] ABORT: No cache, no RAG data, no blueprint text. Refusing to fabricate an answer.")
+        return ReasonerOutput(
+            respuesta_candidata=(
+                "No tengo acceso a los planos en este momento. "
+                "Por favor, sube el archivo PDF del plano en la barra lateral de Streamlit "
+                "y vuelve a realizar tu consulta."
+            ),
+            sources=[],
+            confianza_inicial=0.05,
+            advertencias_tecnicas=["No blueprint data available — response would be fabricated"]
+        )
+
     # --- 3. Prompt Construction & Gemini Pro Execution ---
     prompt = _construir_prompt(perception, contexto_rag, plano_texto, historial)
 
@@ -103,22 +119,28 @@ async def agente_razonador(
         
         v2_client = genai_v2.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
         
+        response = None
         if active_cache:
             # --- Native Long-Context via Gemini Cache ---
             logger.info(f"[Reasoner] Active Context Cache found ({active_cache}). Using native full-blueprint analysis.")
             
-            response = await asyncio.to_thread(
-                v2_client.models.generate_content,
-                model=MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    cached_content=active_cache,
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                    response_schema=ReasonerOutput
+            try:
+                response = await asyncio.to_thread(
+                    v2_client.models.generate_content,
+                    model=MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        cached_content=active_cache,
+                        temperature=0.1,
+                        response_mime_type="application/json",
+                        response_schema=ReasonerOutput
+                    )
                 )
-            )
-        else:
+            except Exception as e:
+                logger.warning(f"[Reasoner] Cache request failed ({e}). Falling back to traditional RAG.")
+                active_cache = None
+                
+        if not active_cache:
             # --- Traditional RAG Execution ---
             response = await asyncio.to_thread(
                 v2_client.models.generate_content,

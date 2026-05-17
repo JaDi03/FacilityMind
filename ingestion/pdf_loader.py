@@ -66,14 +66,72 @@ def inferir_torre(plano_id: str) -> Optional[str]:
     return None
 
 
-def extraer_texto_pagina(page: fitz.Page) -> str:
-    """Extracts text from a PDF page, attempting to preserve table formatting."""
-    # Attempt simple text extraction first
-    text = page.get_text("text")
-    if not text.strip():
-        # If no text is found, it might be a scanned image → Gemini-based OCR fallback in pipeline
+
+def extraer_texto_con_vision(page: fitz.Page, page_num: int) -> str:
+    """
+    Uses Gemini Flash Vision to extract structured text from a blueprint page image.
+    This produces spatially-aware text that preserves which annotations are in which rooms.
+    
+    Example output for an electrical plan:
+    "UNIT A - ELECTRICAL PLAN (E.3)
+     BEDROOM: Outlet labeled A-9, Outlet labeled A-11
+     BATHROOM: Outlet labeled A-13 (GFCI)
+     KITCHEN: Outlet labeled A-7, A-8
+     PANEL A located in LAUNDRY ROOM"
+    """
+    import io
+    import time
+    import google.generativeai as genai
+    from config import GeminiModels, GEMINI_API_KEY
+    
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    try:
+        # Convert PDF page to PNG image at 200 DPI (good balance of quality vs size)
+        pix = page.get_pixmap(dpi=200)
+        img_bytes = pix.tobytes("png")
+        
+        # Build the extraction prompt
+        prompt = """You are analyzing a construction blueprint page. Extract ALL text visible on this page in a structured, readable format.
+
+CRITICAL INSTRUCTIONS:
+1. **Sheet Info**: Extract the sheet title and number (e.g., "E.3 - UNIT A ELECTRICAL PLAN")
+2. **Room Labels**: List every room name visible (e.g., BEDROOM, LIVING ROOM, KITCHEN, BATHROOM, LAUNDRY)
+3. **Electrical Annotations**: For EVERY electrical symbol (outlet, switch, light, etc.), extract:
+   - The text label next to it (e.g., "A-9", "A-11", "C-1", "B-3")
+   - WHICH ROOM it is physically located inside (e.g., "In BEDROOM: outlet labeled A-9")
+4. **Panel Info**: Any panel labels, panel schedules, load schedules, breaker lists
+5. **Dimensions**: Any measurements or dimensions shown
+6. **Notes & Legends**: All written notes, specifications, legends, and general notes
+7. **Equipment Labels**: HVAC units, plumbing fixtures, appliance labels
+8. **Title Block**: Project name, drawing date, scale, architect info
+
+FORMAT YOUR OUTPUT AS STRUCTURED TEXT with clear section headers.
+Do NOT skip any annotation, label, or note — even small text matters for facility management.
+For electrical plans, it is CRITICAL to associate each circuit label with the specific room it appears in."""
+        
+        model = genai.GenerativeModel(GeminiModels.VISION_OCR)
+        
+        # Send image to Gemini Flash
+        from PIL import Image
+        image = Image.open(io.BytesIO(img_bytes))
+        
+        response = model.generate_content(
+            [prompt, image],
+            generation_config=genai.GenerationConfig(temperature=0.1)
+        )
+        
+        extracted = response.text if response.text else ""
+        logger.info(f"  Page {page_num}: Vision OCR extracted {len(extracted)} chars")
+        
+        # Small delay to avoid rate limiting (32 pages at ~2-3 sec each)
+        time.sleep(0.5)
+        
+        return extracted
+        
+    except Exception as e:
+        logger.warning(f"  Page {page_num}: Vision OCR failed ({e}), falling back to raw text")
         return ""
-    return text
 
 
 def cargar_plano(
@@ -107,15 +165,10 @@ def cargar_plano(
     doc = fitz.open(str(pdf_path))
     total_pages = len(doc)
 
-    logger.info(f"Loading blueprint {plano_id} ({tipo_plano}) - {total_pages} pages")
-
     for page_num in range(total_pages):
-        page = doc[page_num]
-        text = extraer_texto_pagina(page)
-
-        if not text.strip():
-            logger.warning(f"  Page {page_num + 1} has no selectable text (likely a scanned image)")
-            continue
+        # We completely ignore PyMuPDF's garbage text extraction to keep our index 100% pristine.
+        # All pages will be processed visually in the background or handled via Gemini's native PDF Context Cache.
+        text = ""
 
         # Update floor if inferred from specific page context (if applicable)
         page_piso = inferir_piso(plano_id, page_num, total_pages) or piso
@@ -138,39 +191,16 @@ def cargar_plano(
         documentos.append(doc_dict)
 
     doc.close()
-    logger.info(f"  -> {len(documentos)} pages with text extracted")
+    logger.info(f"  -> {len(documentos)} page metadatas registered synchronously (pure visual-first approach)")
     return documentos
 
 
 def cargar_plano_como_texto(pdf_path: str, max_chars: int = 500000) -> str:
     """
-    Extracts ALL text from a PDF as a single continuous string.
-    Used for passing the entire blueprint as long-context to Gemini.
-
-    Args:
-        pdf_path: Path to the PDF file.
-        max_chars: Maximum characters allowed (truncates if longer).
-
-    Returns:
-        Full text content of the blueprint.
+    Returns empty string because we completely refuse to use the garbage raw text layer of CAD PDFs.
+    The system relies entirely on Gemini Context Cache (natively visual) and high-quality Vision OCR.
     """
-    pdf_path = Path(pdf_path)
-    if not pdf_path.exists():
-        return ""
-
-    doc = fitz.open(str(pdf_path))
-    partes = []
-    for i, page in enumerate(doc):
-        text = page.get_text("text")
-        if text.strip():
-            partes.append(f"\n--- BLUEPRINT PAGE {i + 1} ---\n{text}")
-    doc.close()
-
-    full_text = "\n".join(partes)
-    if len(full_text) > max_chars:
-        full_text = full_text[:max_chars] + "\n...[CONTENT TRUNCATED DUE TO CONTEXT LIMIT]"
-
-    return full_text
+    return ""
 
 
 def listar_planos_disponibles(directorio: str = "./data/raw") -> List[Dict]:

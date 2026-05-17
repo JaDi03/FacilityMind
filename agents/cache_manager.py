@@ -7,6 +7,7 @@ This replaces traditional RAG with native Long-Context memory for maximum accura
 import os
 import time
 import logging
+from pathlib import Path
 from typing import Dict, Optional
 
 from google import genai
@@ -44,30 +45,48 @@ def cache_blueprint(pdf_path: str, display_name: str) -> Dict:
         if file_info.state.name == "FAILED":
             raise Exception("Google Gemini failed to process the PDF document.")
 
-        # 3. Create Context Cache (Valid for 1 hour by default)
-        logger.info(f"[CacheManager] Creating Context Cache for {display_name}...")
+        # Paths to prompt files
+        PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
         
-        system_instruction = (
-            "You are FacilityMind's Technical Reasoner. You have been provided with a complete building blueprint. "
-            "Analyze the entire document carefully. When answering user queries, you MUST cite the exact page number "
-            "and quote the relevant text or diagram title from this document. Never invent circuits or pathways not found here."
-        )
-        
-        cached_content = client.caches.create(
+        reasoner_prompt = ""
+        reasoner_prompt_path = PROMPTS_DIR / "reasoner.txt"
+        if reasoner_prompt_path.exists():
+            reasoner_prompt = reasoner_prompt_path.read_text(encoding="utf-8")
+            
+        validator_prompt = ""
+        validator_prompt_path = PROMPTS_DIR / "validator.txt"
+        if validator_prompt_path.exists():
+            validator_prompt = validator_prompt_path.read_text(encoding="utf-8")
+
+        # 3. Create Reasoner Cache (with reasoner prompt baked in)
+        logger.info(f"[CacheManager] Creating Reasoner Context Cache for {display_name}...")
+        reasoner_cache = client.caches.create(
             model=GeminiModels.REASONER,
             config=types.CreateCachedContentConfig(
                 contents=[uploaded_file],
-                system_instruction=system_instruction,
+                system_instruction=reasoner_prompt,
                 ttl="3600s" # 1 hour
             )
         )
-        
-        logger.info(f"[CacheManager] Success! Cache created: {cached_content.name}")
-        
+        logger.info(f"[CacheManager] Reasoner Cache created: {reasoner_cache.name}")
+
+        # 4. Create Validator Cache (with validator prompt baked in)
+        logger.info(f"[CacheManager] Creating Validator Context Cache for {display_name}...")
+        validator_cache = client.caches.create(
+            model=GeminiModels.VALIDATOR,
+            config=types.CreateCachedContentConfig(
+                contents=[uploaded_file],
+                system_instruction=validator_prompt,
+                ttl="3600s" # 1 hour
+            )
+        )
+        logger.info(f"[CacheManager] Validator Cache created: {validator_cache.name}")
+
         return {
             "success": True,
             "file_name": uploaded_file.name,
-            "cache_name": cached_content.name
+            "cache_name_reasoner": reasoner_cache.name,
+            "cache_name_validator": validator_cache.name
         }
         
     except Exception as e:

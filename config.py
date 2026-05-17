@@ -25,6 +25,8 @@ class GeminiModels:
     VALIDATOR = "models/gemini-2.5-pro"
     # Agent 4 — Visualizer
     VISUALIZER_IMAGE = "models/imagen-4.0-ultra-generate-001"
+    # Vision OCR — Blueprint page extraction (converts CAD drawings to structured text)
+    VISION_OCR = "models/gemini-2.5-flash"
     # Embeddings
     EMBEDDING = "models/gemini-embedding-001"
 

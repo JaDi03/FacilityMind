@@ -71,6 +71,27 @@ async def agente_validador(
             pass
 
     # --- Build Prompt & Execute Gemini Pro ---
+    
+    # --- SAFETY CHECK: Auto-reject if no blueprint data available ---
+    # If there's no cache AND no real blueprint text, the Validator cannot verify anything.
+    # Calling Gemini would just rubber-stamp the Reasoner's (potentially hallucinated) answer.
+    if not active_cache and plano_texto == "(Original blueprint text not available for verification)":
+        logger.warning("[Validator] ABORT: No cache and no blueprint text. Auto-rejecting to prevent approval of unverified data.")
+        return ValidatorOutput(
+            aprobado=False,
+            respuesta_final=reasoner.respuesta_candidata,
+            confianza_final=0.0,
+            sources_verificadas=[],
+            advertencias=["No blueprint data available for verification — auto-rejected"],
+            requiere_supervisor=True,
+            motivo_rechazo="Cannot verify: no blueprint data loaded. Upload the PDF first.",
+            alucinaciones_detectadas=["Unable to verify any claims — no source data"],
+            safety=SafetyAssessment(
+                nivel_riesgo="high",
+                descripcion_riesgo="Response cannot be verified without blueprint access"
+            )
+        )
+    
     prompt = f"""CANDIDATE RESPONSE TO VALIDATE:
 {reasoner.respuesta_candidata}
 
@@ -93,22 +114,28 @@ Generate your validation in the specified strict JSON format.
         
         v2_client = genai_v2.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
         
+        response = None
         if active_cache:
             # --- Native Long-Context via Gemini Cache ---
             logger.info(f"[Validator] Active Context Cache found ({active_cache}). Using native full-blueprint verification.")
             
-            response = await asyncio.to_thread(
-                v2_client.models.generate_content,
-                model=MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    cached_content=active_cache,
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                    response_schema=ValidatorOutput
+            try:
+                response = await asyncio.to_thread(
+                    v2_client.models.generate_content,
+                    model=MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        cached_content=active_cache,
+                        temperature=0.1,
+                        response_mime_type="application/json",
+                        response_schema=ValidatorOutput
+                    )
                 )
-            )
-        else:
+            except Exception as e:
+                logger.warning(f"[Validator] Cache request failed ({e}). Falling back to traditional verification.")
+                active_cache = None
+                
+        if not active_cache:
             # --- Traditional Execution ---
             response = await asyncio.to_thread(
                 v2_client.models.generate_content,

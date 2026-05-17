@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 # ─── Constants ───
-API_BASE = os.getenv("FACILITYMIND_API", "http://localhost:8000")
+API_BASE = os.getenv("FACILITYMIND_API", "http://127.0.0.1:8000")
 API_HEALTH = f"{API_BASE}/api/v1/health"
 API_CONSULTA = f"{API_BASE}/api/v1/consulta"
 API_PLANOS = f"{API_BASE}/api/v1/planos"
@@ -128,7 +128,7 @@ def subir_plano(file, plano_id=None, tipo_plano=None):
         data["tipo_plano"] = tipo_plano
 
     try:
-        resp = requests.post(API_UPLOAD, data=data, files=files, timeout=60)
+        resp = requests.post(API_UPLOAD, data=data, files=files, timeout=300)
         return resp.json()
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -266,12 +266,22 @@ with tab1:
             audio_input = st.audio_input("🎤 Record voice query")
         with col_photo:
             photo_input = st.file_uploader("📷 Upload visual context", type=["jpg", "jpeg", "png"])
+            
+    send_media_clicked = False
+    if audio_input or photo_input:
+        send_media_clicked = st.button("📤 Enviar Audio/Foto", use_container_width=True)
 
-    if prompt := st.chat_input("Ask about the building infrastructure... (e.g., 'Which breaker controls unit 1402?')"):
+    prompt_text = st.chat_input("Ask about the building infrastructure... (e.g., 'Which breaker controls unit 1402?')")
+
+    if prompt_text or send_media_clicked:
+        final_prompt = prompt_text if prompt_text else "Analiza este archivo multimedia."
+        
         # Display user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.session_state.messages.append({"role": "user", "content": final_prompt})
         with st.chat_message("user"):
-            st.write(prompt)
+            st.write(final_prompt)
+            if audio_input: st.audio(audio_input)
+            if photo_input: st.image(photo_input, width=200)
 
         # Call API
         with st.chat_message("assistant"):
@@ -283,16 +293,22 @@ with tab1:
                     historial_str = json.dumps([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]])
 
                 payload = {
-                    "pregunta": prompt,
+                    "pregunta": final_prompt,
                     "historial": historial_str,
                     "disciplina": filtro_disciplina if filtro_disciplina else None,
                     "piso": filtro_piso if filtro_piso else None,
                     "edificio_id": "default"
                 }
                 
+                files = {}
+                if audio_input:
+                    files["audio"] = (audio_input.name, audio_input.getvalue(), "audio/wav")
+                if photo_input:
+                    files["imagen"] = (photo_input.name, photo_input.getvalue(), photo_input.type)
+                
                 try:
                     # Note: We use 'data=payload' because the backend expects Form data (multipart)
-                    resp = requests.post(API_CONSULTA, data=payload, timeout=90)
+                    resp = requests.post(API_CONSULTA, data=payload, files=files if files else None, timeout=90)
                     
                     if resp.status_code == 200:
                         res = resp.json()

@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 # Add root to sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -115,12 +115,85 @@ class ConsultaResponse(BaseModel):
     error: str = None
 
 
+def ejecutar_ocr_visual_background(pdf_path: str, plano_id: str, edificio_id: str, tipo_plano: str):
+    """
+    Background task to run Vision OCR on ALL pages of a blueprint PDF and index them into Chroma DB.
+    This runs asynchronously, completely bypassing PyMuPDF's text layers to prevent garbage character noise.
+    """
+    import fitz
+    import time
+    from ingestion.pdf_loader import extraer_texto_con_vision, inferir_piso, inferir_torre
+    from ingestion.chunker import crear_chunks_inteligentes
+    from ingestion.vector_store import PlanoVectorStore
+    
+    logger.info(f"[Background OCR] Starting Vision OCR for {plano_id} (All pages)...")
+    try:
+        doc = fitz.open(pdf_path)
+        total_pages = len(doc)
+        
+        vector_store = PlanoVectorStore()
+        vision_pages_processed = 0
+        
+        for page_num in range(total_pages):
+            page = doc[page_num]
+            logger.info(f"[Background OCR] Processing Page {page_num + 1}/{total_pages} with Vision OCR...")
+            
+            # Extract high-fidelity structured text using Vision OCR
+            vision_text = extraer_texto_con_vision(page, page_num + 1)
+            
+            if vision_text.strip():
+                page_piso = inferir_piso(plano_id, page_num, total_pages)
+                torre = inferir_torre(plano_id)
+                
+                doc_dict = {
+                    "text": f"[PDF Page {page_num + 1} — Vision OCR Extraction]\n{vision_text}",
+                    "metadata": {
+                        "plano_id": str(plano_id),
+                        "tipo_plano": str(tipo_plano if tipo_plano else "electrical"),
+                        "edificio_id": str(edificio_id),
+                        "piso": str(page_piso) if page_piso is not None else "",
+                        "torre": str(torre) if torre is not None else "",
+                        "pagina": int(page_num + 1),
+                        "total_paginas": int(total_pages),
+                        "source": str(f"{plano_id}_p{page_num + 1}"),
+                        "file_name": os.path.basename(pdf_path),
+                    },
+                    "id": f"{plano_id}_p{page_num + 1}"
+                }
+                
+                # Chunk and index immediately
+                chunks = crear_chunks_inteligentes([doc_dict], incluir_tablas=True, incluir_secciones=False)
+                vector_store.add_chunks(chunks)
+                vision_pages_processed += 1
+                logger.info(f"[Background OCR] Page {page_num + 1}/{total_pages} successfully indexed into Chroma.")
+            
+            # Rate limit guard (avoid 429 Resource Exhausted)
+            time.sleep(1.5)
+            
+        doc.close()
+        logger.info(f"[Background OCR] Finished! Visually processed {vision_pages_processed}/{total_pages} pages for {plano_id}.")
+        
+        # Update planos_cargados metadata with the newly indexed chunks
+        global planos_cargados
+        if plano_id in planos_cargados:
+            planos_cargados[plano_id]["chunks_indexados"] = vector_store.collection.count()
+            # Persist update
+            import json
+            persisted_path = Path("data/processed/planos_cargados.json")
+            with open(persisted_path, "w", encoding="utf-8") as f:
+                json.dump(planos_cargados, f, indent=4)
+                
+    except Exception as e:
+        logger.error(f"[Background OCR] Critical error in background thread: {e}")
+
+
 # ═══════════════════════════════════════════════════════════════
 # ENDPOINTS: Blueprint Ingestion
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/api/v1/planos/upload")
 async def upload_plano(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     plano_id: str = Form(None),
     edificio_id: str = Form("default"),
@@ -142,55 +215,67 @@ async def upload_plano(
     if not plano_id:
         plano_id = Path(file.filename).stem
 
-    # Save file temporarily in a local directory to avoid Windows permission issues
-    tmp_dir = Path("./data/tmp")
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    
-    suffix = Path(file.filename).suffix or ".pdf"
-    fd, tmp_path = tempfile.mkstemp(suffix=suffix, dir=str(tmp_dir))
+    # Save file permanently in raw directory
+    raw_dir = Path("./data/raw")
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    persistent_path = raw_dir / f"{plano_id}.pdf"
     
     try:
-        with os.fdopen(fd, 'wb') as tmp:
+        # Stream file to disk to avoid memory overhead
+        with open(persistent_path, 'wb') as f:
             content = await file.read()
-            tmp.write(content)
-            tmp.flush()
+            f.write(content)
+            f.flush()
         
-        # 1. Load PDF
-        documentos = cargar_plano(tmp_path, plano_id=plano_id, edificio_id=edificio_id)
+        logger.info(f"[API] Blueprint PDF saved permanently to: {persistent_path}")
 
-        if not documentos:
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": "Could not extract text from PDF. Is it a scanned PDF without OCR?"}
-            )
+        # 1. Load PDF (only extracts clean pages synchronously to prevent CAD text-garbage noise)
+        documentos = cargar_plano(str(persistent_path), plano_id=plano_id, edificio_id=edificio_id)
 
         # Overwrite discipline if provided
-        if tipo_plano:
+        if tipo_plano and documentos:
             for doc in documentos:
                 doc["metadata"]["tipo_plano"] = tipo_plano
 
-        # 2. Create intelligent chunks (pages + tables)
-        chunks = crear_chunks_inteligentes(documentos, incluir_tablas=True, incluir_secciones=False)
+        # 2. Create intelligent chunks for clean pages (only those with non-empty text content)
+        clean_docs = [doc for doc in documentos if doc.get("text", "").strip()]
 
-        # 3. Index in Chroma
-        num_agregados = vector_store.add_chunks(chunks)
+        chunks = []
+        num_agregados = 0
+        if clean_docs:
+            chunks = crear_chunks_inteligentes(clean_docs, incluir_tablas=True, incluir_secciones=False)
+            # 3. Index clean pages in Chroma
+            num_agregados = vector_store.add_chunks(chunks)
 
         # 4. Create Context Cache (Google Way)
         import asyncio
         from agents.cache_manager import cache_blueprint
         
-        cache_result = await asyncio.to_thread(cache_blueprint, tmp_path, plano_id)
-        cache_name = cache_result.get("cache_name") if cache_result.get("success") else None
+        cache_result = await asyncio.to_thread(cache_blueprint, str(persistent_path), plano_id)
+        cache_name_reasoner = cache_result.get("cache_name_reasoner") if cache_result.get("success") else None
+        cache_name_validator = cache_result.get("cache_name_validator") if cache_result.get("success") else None
+
+        # Determine total pages safely
+        total_paginas = 0
+        if documentos:
+            total_paginas = documentos[0]["metadata"]["total_paginas"]
+        else:
+            import fitz
+            doc = fitz.open(str(persistent_path))
+            total_paginas = len(doc)
+            doc.close()
 
         # 5. Register loaded blueprint
         planos_cargados[plano_id] = {
             "plano_id": plano_id,
             "edificio_id": edificio_id,
-            "tipo_plano": documentos[0]["metadata"]["tipo_plano"] if documentos else tipo_plano,
+            "tipo_plano": documentos[0]["metadata"]["tipo_plano"] if documentos else (tipo_plano if tipo_plano else "electrical"),
             "piso": documentos[0]["metadata"].get("piso") if documentos else None,
-            "total_paginas": documentos[0]["metadata"]["total_paginas"] if documentos else 0,
+            "total_paginas": total_paginas,
             "chunks_indexados": num_agregados,
-            "cache_name": cache_name,
+            "cache_name_reasoner": cache_name_reasoner,
+            "cache_name_validator": cache_name_validator,
+            "cache_name": cache_name_reasoner, # Backward compatibility
         }
 
         # Persist to disk so restarts don't lose the registered caches
@@ -204,7 +289,16 @@ async def upload_plano(
         except Exception as e:
             logger.warning(f"⚠️ Failed to persist planos_cargados: {e}")
 
-        logger.info(f"[API] Blueprint {plano_id} loaded: {num_agregados} chunks")
+        # 6. Launch Background Task to run Vision OCR on CAD drawing pages
+        background_tasks.add_task(
+            ejecutar_ocr_visual_background,
+            str(persistent_path),
+            plano_id,
+            edificio_id,
+            tipo_plano
+        )
+
+        logger.info(f"[API] Blueprint {plano_id} loaded synchronously. Vision OCR background task dispatched.")
 
         return {
             "success": True,
@@ -214,10 +308,6 @@ async def upload_plano(
     except Exception as e:
         logger.error(f"[API] Error loading blueprint: {e}")
         raise HTTPException(500, f"Error processing blueprint: {str(e)}")
-
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
 
 
 @app.get("/api/v1/planos")
@@ -247,7 +337,13 @@ async def eliminar_plano(plano_id: str):
 
     success = vector_store.delete_plano(plano_id)
     if success:
-        planos_cargados.pop(plano_id, None)
+        plano_info = planos_cargados.pop(plano_id, None)
+        if plano_info:
+            from agents.cache_manager import delete_cache
+            for cache_key in ["cache_name_reasoner", "cache_name_validator", "cache_name"]:
+                cache_name = plano_info.get(cache_key)
+                if cache_name:
+                    delete_cache(cache_name)
         
         # Persist modified planos_cargados to disk after deletion
         try:
@@ -377,10 +473,12 @@ async def consulta(
             perception.piso = piso
 
         # Retrieve active context cache for native long-context
-        active_cache = None
+        active_cache_reasoner = None
+        active_cache_validator = None
         if planos_cargados:
             last_plano = list(planos_cargados.values())[-1]
-            active_cache = last_plano.get("cache_name")
+            active_cache_reasoner = last_plano.get("cache_name_reasoner") or last_plano.get("cache_name")
+            active_cache_validator = last_plano.get("cache_name_validator") or last_plano.get("cache_name")
 
         # ═══════════════════════════════════════════════════════
         # STEP 2: REASONER AGENT
@@ -391,7 +489,7 @@ async def consulta(
             vector_store=vector_store,
             plano_completo_path=None,  # Auto-detect
             building_id=edificio_id,
-            active_cache=active_cache,
+            active_cache=active_cache_reasoner,
             historial=historial
         )
 
@@ -402,7 +500,7 @@ async def consulta(
         validator = await agente_validador(
             reasoner=reasoner,
             plano_completo_path=None,
-            active_cache=active_cache
+            active_cache=active_cache_validator
         )
 
         # ═══════════════════════════════════════════════════════
@@ -485,6 +583,7 @@ async def health():
     }
 
     return {"success": True, "data": status}
+
 
 
 # ═══════════════════════════════════════════════════════════════

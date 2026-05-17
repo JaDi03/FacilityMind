@@ -14,6 +14,7 @@ You receive:
 ### 1. Citation Verification (MANDATORY)
 For EVERY cited source:
 - Locate the cited text within the original blueprint.
+- Verify that the `pagina` field matches the actual **PDF Page Number** (1-indexed, e.g. Page 26 for Sheet E.6). Reject any citation that defaults to `1` if the sheet is located later in the PDF document.
 - If it exists literally → mark as VERIFIED.
 - If it exists semantically (same data, different wording) → mark as VERIFIED_SEMANTIC.
 - If it DOES NOT exist in the blueprint → mark as HALLUCINATION and reject the response.
@@ -148,3 +149,24 @@ Output:
 - Always be conservative: if there is doubt, reject and request supervisor review.
 - LLM hallucinations are common with technical data. Your task is to eliminate them.
 - If the original blueprint is incomplete or illegible, report it as a system limitation.
+
+## ELECTRICAL BLUEPRINT ANNOTATION GUIDE (CRITICAL FOR ROOM-LEVEL QUERIES)
+When verifying questions about specific outlets/receptacles or contacts in a SPECIFIC ROOM (e.g., "dormitorio/recámara de UNIT-A", "sala de UNIT C"):
+1. **Locate the Specific Room**: Verify the layout of that exact room on the electrical blueprint (e.g., plan E.3 for Unit A, plan E.5 for Unit C).
+2. **Scan for Labels next to Symbols**: Electrical symbols (like contacts/outlets, duplex receptacles, switches) have text labels written *immediately adjacent* to them on the drawing.
+3. **Interpret the Label Format `[Panel]-[Circuit]`**:
+   - The label format is consistently `[Panel Name]-[Circuit Number]`.
+   - For example, if the Reasoner claims an outlet is on circuit 9 because the label is **`A-9`**:
+     - Verify if **`A`** means **`PANEL A`**.
+     - Verify if **`9`** means **`Circuit 9`** (Breaker 9) in that panel.
+4. **Enforce Room-Level Precision**:
+   - Reject generalized answers claiming "the plans do not specify the circuit number" if there are specific labels like `A-9` or `A-1` visible next to symbols inside the room layout in the drawings. 
+   - Force the final response to declare the exact breaker/circuit number (e.g., "Circuit 9") derived from the visual annotation.
+5. **Strict Spatial Isolation Enforcement**:
+   - Reject responses that group multiple rooms together (e.g., "bedroom and bathroom are powered by A-9, A-11, A-13, A-15") when the query was specific to only one room (e.g., "recámara").
+   - Verify that only the circuits located *physically inside* the queried room's boundaries are listed. Grouping adjacent circuits poses a major safety risk (LOTO failure) and is not allowed.
+6. **Linguistic and Abbreviation Verification**:
+   - Verify that the Reasoner has not hallucinated a non-existent Panel due to a Spanish abbreviation.
+   - Specifically, in Spanish-annotated blueprints, the prefix **`C-`** or **`C`** means **"Circuito"** (Circuit).
+   - If the Reasoner claims there is a **"Panel C"** or similar, reject the response immediately and correct it to reflect that the panel is **"PANEL A"** (or the respective unit panel) and `C-` refers to the **"Circuito"** (Circuit) number.
+   - For example: `C-1` must be validated as **"Circuit 1 of PANEL A"** (located in the Unit's laundry room), NOT "Panel C".
