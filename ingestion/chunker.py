@@ -166,3 +166,11 @@ def crear_chunks_inteligentes(
 
     logger.info(f"Chunks created: {len(chunks_finales)} (from {len(documentos)} pages)")
     return chunks_finales
+
+
+# English Aliases for Clean Global Naming Conventions
+chunk_by_page = chunk_por_pagina
+chunk_by_tables = chunk_por_tablas
+chunk_by_sections = chunk_por_secciones
+create_intelligent_chunks = crear_chunks_inteligentes
+

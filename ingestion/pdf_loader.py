@@ -235,3 +235,14 @@ def listar_planos_disponibles(directorio: str = "./data/raw") -> List[Dict]:
             logger.error(f"Error reading {pdf_file}: {e}")
 
     return planos
+
+
+# English Aliases for Clean Global Naming Conventions
+infer_blueprint_type = inferir_tipo_plano
+infer_floor = inferir_piso
+infer_tower = inferir_torre
+extract_text_with_vision = extraer_texto_con_vision
+load_blueprint = cargar_plano
+load_blueprint_as_text = cargar_plano_como_texto
+list_available_blueprints = listar_planos_disponibles
+

@@ -44,7 +44,7 @@ Thumbs.db
 # FacilityMind Data
 data/raw/*.pdf
 data/processed/chroma_db/
-data/processed/visualizaciones/
+data/processed/visualizations/
 data/processed/loaded_blueprints.json
 *.db
 *.sqlite

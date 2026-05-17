@@ -199,3 +199,27 @@ class PlanoVectorStore:
     def peek(self, n: int = 3) -> Dict:
         """Returns the first n chunks for debugging purposes."""
         return self.collection.peek(limit=n)
+
+    # English Aliases for Naming Consistency
+    def count_chunks(self) -> int:
+        return self.contar_chunks()
+
+    def list_blueprints(self) -> List[str]:
+        return self.listar_planos()
+
+    def delete_blueprint(self, blueprint_id: str) -> bool:
+        return self.delete_plano(blueprint_id)
+
+    def query_with_discipline_filter(
+        self,
+        query_text: str,
+        discipline: Optional[str] = None,
+        floor: Optional[str] = None,
+        n_results: int = 8
+    ) -> Dict:
+        return self.query_con_filtro_disciplina(query_text, discipline, floor, n_results)
+
+
+# English Class Alias for Global Naming Conventions
+BlueprintVectorStore = PlanoVectorStore
+
