@@ -427,6 +427,37 @@ async def query_agents(
                 imagen_path = tmp.name
 
         # ─── AGENT 1: PERCEPTION ───
+        # ═══════════════════════════════════════════════════════
+        # PASO 0: LOBSTER TRAP DEEP PROMPT INSPECTION (DPI)
+        # ═══════════════════════════════════════════════════════
+        from agents.security import inspect_prompt
+        logger.info(f"[Security] Running DPI on query: {query_text}")
+        security_verdict = inspect_prompt(query_text)
+        
+        if not security_verdict.allowed:
+            logger.warning(f"[Security] Request blocked by Lobster Trap: {security_verdict.deny_message}")
+            # Limpiar temporales si hubo
+            if audio_path and os.path.exists(audio_path):
+                os.remove(audio_path)
+            if imagen_path and os.path.exists(imagen_path):
+                os.remove(imagen_path)
+                
+            return {
+                "message": security_verdict.deny_message,
+                "sources": [],
+                "confidence": 0,
+                "type": "security_block",
+                "security_info": {
+                    "action": security_verdict.action,
+                    "risk_score": security_verdict.risk_score,
+                    "matched_rule": security_verdict.matched_rule,
+                    "intent": security_verdict.intent_category
+                }
+            }
+
+        # ═══════════════════════════════════════════════════════
+        # PASO 1: AGENTE DE PERCEPCIÓN (Multimodal a Texto)
+        # ═══════════════════════════════════════════════════════
         perception = await agente_percepcion(
             text=query_text,
             audio_path=audio_path,

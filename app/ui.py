@@ -254,6 +254,13 @@ with tab1:
                             if viz.get("generated_image") and os.path.exists(viz["generated_image"]):
                                 st.image(viz["generated_image"], use_container_width=True)
 
+                    # Security Blocks (Lobster Trap)
+                    if tech.get("type") == "security_block":
+                        st.markdown(f'<div style="background-color:#ffe6e6; border-left: 5px solid #ff4b4b; padding:10px; margin:10px 0; border-radius:5px;"><h4 style="color:#ff4b4b; margin-top:0;">🛡️ Security Block</h4><p style="color:#8b0000; font-weight:bold;">{tech.get("message")}</p></div>', unsafe_allow_html=True)
+                        if "security_info" in tech:
+                            sec = tech["security_info"]
+                            st.caption(f"**Action:** {sec.get('action')} | **Risk Score:** {sec.get('risk_score', 0):.2f} | **Rule:** {sec.get('matched_rule')} | **Intent:** {sec.get('intent')}")
+
                     # Warnings
                     if tech.get("warnings"):
                         for warn in tech["warnings"]:
@@ -321,17 +328,24 @@ with tab1:
                                 "confidence": data.get("confidence", 0),
                                 "sources": data.get("sources", []),
                                 "warnings": data.get("warnings", []),
-                                "visualization": data.get("visualization") or {}
+                                "visualization": data.get("visualization") or {},
+                                "type": data.get("type", ""),
+                                "message": data.get("message", ""),
+                                "security_info": data.get("security_info", {})
                             }
                             
                             # Visualization
                             if tech_data["visualization"] and tech_data["visualization"].get("mermaid_diagram"):
                                 render_mermaid(tech_data["visualization"]["mermaid_diagram"])
+                                
+                            # Security Block Alert
+                            if tech_data["type"] == "security_block":
+                                st.markdown(f'<div style="background-color:#ffe6e6; border-left: 5px solid #ff4b4b; padding:10px; margin:10px 0; border-radius:5px;"><h4 style="color:#ff4b4b; margin-top:0;">🛡️ Security Block</h4><p style="color:#8b0000; font-weight:bold;">{tech_data["message"]}</p></div>', unsafe_allow_html=True)
                             
                             # Save to history
                             st.session_state.messages.append({
                                 "role": "assistant", 
-                                "content": full_answer,
+                                "content": full_answer if full_answer else (tech_data["message"] if tech_data["type"] == "security_block" else ""),
                                 "technical_data": tech_data
                             })
                             st.rerun()
