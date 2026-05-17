@@ -86,16 +86,18 @@ st.markdown("""
         padding: 0.75rem !important;
     }
     /* Style Streamlit Tabs to make them much larger, modern and elegant */
-    div.stTabs [data-baseweb="tab-list"] button {
-        font-size: 1.2rem !important;
+    div.stTabs [data-baseweb="tab-list"] button,
+    div.stTabs [data-baseweb="tab-list"] button p,
+    div.stTabs [data-baseweb="tab"] p,
+    .stTabs button p {
+        font-size: 1.4rem !important;
         font-weight: 700 !important;
-        padding-left: 1.5rem !important;
-        padding-right: 1.5rem !important;
-        padding-top: 0.75rem !important;
-        padding-bottom: 0.75rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
         color: #5f6368 !important;
     }
-    div.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+    div.stTabs [data-baseweb="tab-list"] button[aria-selected="true"],
+    div.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] p {
         color: #1a73e8 !important;
         border-bottom-color: #1a73e8 !important;
     }
