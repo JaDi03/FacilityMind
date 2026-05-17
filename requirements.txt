@@ -1,0 +1,25 @@
+# Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.17
+
+# Frontend
+streamlit>=1.40.0
+
+# Google Gemini SDK
+google-generativeai>=0.8.0
+
+# Vector DB
+chromadb>=0.5.0
+
+# PDF Processing
+PyMuPDF>=1.24.0
+
+# Data Models
+pydantic>=2.9.0
+
+# Async HTTP
+aiohttp>=3.11.0
+
+# Utilities
+python-dotenv>=1.0.0
