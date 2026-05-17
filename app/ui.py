@@ -223,7 +223,7 @@ with tab1:
                 tech = msg["technical_data"]
                 
                 # Check if it's a direct conversational response
-                is_conversational = any("conversacional" in w.lower() for w in tech.get("warnings", []))
+                is_conversational = any("conversational" in w.lower() for w in tech.get("warnings", []))
                 
                 if not is_conversational:
                     # Confidence Score
@@ -276,7 +276,7 @@ with tab1:
         # Call API
         with st.chat_message("assistant"):
             with st.spinner("Orchestrating agents..."):
-                # Formatear el historial para enviarlo al backend
+                # Format chat history to send to backend
                 historial_str = ""
                 if len(st.session_state.messages) > 1:
                     import json

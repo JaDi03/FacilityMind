@@ -1,9 +1,9 @@
+
 """
 FacilityMind — Backend FastAPI
 REST API for blueprint ingestion and multi-agent queries.
 Orchestrates the 4 agents: Perception → Reasoner → Validator → Visualizer.
 """
-
 import os
 import sys
 import time
@@ -46,7 +46,7 @@ logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  # Main application logger
 
 # ─── Global State ───
 vector_store: PlanoVectorStore = None
@@ -323,11 +323,11 @@ async def consulta(
             model = genai.GenerativeModel("models/gemini-2.5-flash")
             
             chat_context = f"Chat History:\n{historial}\n\n" if historial else ""
-            plano_info = "Ningún plano cargado."
+            plano_info = "No blueprints loaded."
             if planos_cargados:
-                plano_info = f"Plano activo: ID {list(planos_cargados.values())[-1].get('plano_id', 'Desconocido')}."
+                plano_info = f"Active blueprint: ID {list(planos_cargados.values())[-1].get('plano_id', 'Desconocido')}."
                 
-            prompt = f"Eres el Orquestador de FacilityMind. {chat_context} El usuario dice: '{pregunta}'. Responde de forma amable y breve (1 párrafo max). Información actual del sistema: {plano_info}."
+            prompt = f"You are the FacilityMind Orchestrator. {chat_context} The user says: '{pregunta}'. Respond in a friendly, concise, and helpful way (max 1 paragraph) in the user's language (Spanish). Current system state: {plano_info}."
             
             quick_response = await model.generate_content_async(prompt)
             elapsed_ms = int((time.time() - start_time) * 1000)
@@ -338,7 +338,7 @@ async def consulta(
                     respuesta=quick_response.text,
                     sources=[],
                     confianza=1.0,
-                    advertencias=["Respuesta conversacional directa (sin análisis técnico)"],
+                    advertencias=["Direct conversational response (no technical analysis)"],
                     requiere_supervisor=False,
                     tiempo_procesamiento_ms=elapsed_ms
                 ).model_dump()
