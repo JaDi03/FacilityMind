@@ -10,63 +10,60 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def chunk_por_pagina(documentos: List[Dict]) -> List[Dict]:
+def chunk_by_page(documents: List[Dict]) -> List[Dict]:
     """
     Simple strategy: each page is a chunk.
     Effective for blueprints where each page contains self-contained information.
     """
-    return documentos
+    return documents
 
 
-def chunk_por_tablas(texto: str, metadata_base: Dict, plano_id: str, pagina: int) -> List[Dict]:
+def chunk_by_tables(text: str, base_metadata: Dict, blueprint_id: str, page: int) -> List[Dict]:
     """
     Detects tables in the text and extracts them as independent chunks.
     Technical tables (loads, specifications) are critical for accurate retrieval.
     """
     chunks = []
 
-    # Pattern to detect tables: lines with multiple columns separated by spaces/tabs
-    lineas = texto.split('\n')
-    en_tabla = False
-    tabla_actual = []
-    tabla_num = 0
+    lines = text.split('\n')
+    in_table = False
+    current_table = []
+    table_num = 0
 
-    for linea in lineas:
-        # Heuristic: if the line has multiple segments separated by 2+ spaces
-        columnas = [c.strip() for c in re.split(r'\s{2,}', linea) if c.strip()]
+    for line in lines:
+        columns = [c.strip() for c in re.split(r'\s{2,}', line) if c.strip()]
 
-        if len(columnas) >= 3:  # Likely a table row
-            if not en_tabla:
-                en_tabla = True
-                tabla_num += 1
-            tabla_actual.append(linea)
+        if len(columns) >= 3:
+            if not in_table:
+                in_table = True
+                table_num += 1
+            current_table.append(line)
         else:
-            if en_tabla and len(tabla_actual) >= 3:  # Table with at least 3 rows
-                tabla_texto = '\n'.join(tabla_actual)
-                chunk_id = f"{plano_id}_p{pagina}_tabla{tabla_num}"
+            if in_table and len(current_table) >= 3:
+                table_text = '\n'.join(current_table)
+                chunk_id = f"{blueprint_id}_p{page}_table{table_num}"
                 chunks.append({
-                    "text": f"[TECHNICAL TABLE]\n{tabla_texto}",
+                    "text": f"[TECHNICAL TABLE]\n{table_text}",
                     "metadata": {
-                        **metadata_base,
-                        "chunk_type": "tabla",
-                        "tabla_num": tabla_num,
+                        **base_metadata,
+                        "chunk_type": "table",
+                        "table_num": table_num,
                         "source": chunk_id,
                     },
                     "id": chunk_id
                 })
-            en_tabla = False
-            tabla_actual = []
+            in_table = False
+            current_table = []
 
-    # Handle table at the end of text
-    if en_tabla and len(tabla_actual) >= 3:
-        tabla_texto = '\n'.join(tabla_actual)
-        chunk_id = f"{plano_id}_p{pagina}_tabla{tabla_num}"
+    if in_table and len(current_table) >= 3:
+        table_text = '\n'.join(current_table)
+        chunk_id = f"{blueprint_id}_p{page}_table{table_num}"
         chunks.append({
-            "text": f"[TECHNICAL TABLE]\n{tabla_texto}",
+            "text": f"[TECHNICAL TABLE]\n{table_text}",
             "metadata": {
-                **metadata_base,
-                "chunk_type": "tabla",
-                "tabla_num": tabla_num,
+                **base_metadata,
+                "chunk_type": "table",
+                "table_num": table_num,
                 "source": chunk_id,
             },
             "id": chunk_id
@@ -75,39 +72,37 @@ def chunk_por_tablas(texto: str, metadata_base: Dict, plano_id: str, pagina: int
     return chunks
 
 
-def chunk_por_secciones(texto: str, metadata_base: Dict, plano_id: str, pagina: int) -> List[Dict]:
+def chunk_by_sections(text: str, base_metadata: Dict, blueprint_id: str, page: int) -> List[Dict]:
     """
     Detects blueprint sections (identified by uppercase titles, Roman numerals, etc.)
     and creates chunks per section.
     """
     chunks = []
 
-    # Section patterns: "SECTION 1", "DETAIL A", "SCHEDULE OF", etc.
-    patron_seccion = re.compile(
+    section_pattern = re.compile(
         r'^(?:SECTION|SECCION|SECCIÓN|DETAIL|DETALLE|SCHEDULE|NOTES|NOTAS|'
         r'LEGEND|LEYENDA|GENERAL NOTES|SCHEDULE OF|INDEX|INDICE)\s*[\dA-Z]*',
         re.IGNORECASE | re.MULTILINE
     )
 
-    secciones = list(patron_seccion.finditer(texto))
+    sections = list(section_pattern.finditer(text))
 
-    if len(secciones) < 2:
-        # No clear sections found → return empty list to fallback to full-page chunk
+    if len(sections) < 2:
         return []
 
-    for i, match in enumerate(secciones):
-        inicio = match.start()
-        fin = secciones[i + 1].start() if i + 1 < len(secciones) else len(texto)
-        seccion_texto = texto[inicio:fin].strip()
+    for i, match in enumerate(sections):
+        start = match.start()
+        end = sections[i + 1].start() if i + 1 < len(sections) else len(text)
+        section_text = text[start:end].strip()
 
-        if len(seccion_texto) > 50:  # Ignore extremely short sections
-            chunk_id = f"{plano_id}_p{pagina}_sec{i + 1}"
+        if len(section_text) > 50:
+            chunk_id = f"{blueprint_id}_p{page}_sec{i + 1}"
             chunks.append({
-                "text": seccion_texto,
+                "text": section_text,
                 "metadata": {
-                    **metadata_base,
-                    "chunk_type": "seccion",
-                    "seccion_titulo": match.group(0).strip(),
+                    **base_metadata,
+                    "chunk_type": "section",
+                    "section_title": match.group(0).strip(),
                     "source": chunk_id,
                 },
                 "id": chunk_id
@@ -116,61 +111,37 @@ def chunk_por_secciones(texto: str, metadata_base: Dict, plano_id: str, pagina: 
     return chunks
 
 
-def crear_chunks_inteligentes(
-    documentos: List[Dict],
-    incluir_tablas: bool = True,
-    incluir_secciones: bool = False
+def create_intelligent_chunks(
+    documents: List[Dict],
+    include_tables: bool = True,
+    include_sections: bool = False
 ) -> List[Dict]:
     """
     Creates intelligent chunks from page-level documents.
-
-    Strategy:
-    1. Each page serves as a base chunk (context).
-    2. Detected tables are extracted as additional chunks (easier to retrieve).
-    3. (Optional) Sections are extracted as additional chunks.
-
-    Args:
-        documentos: List of page-level documents (output from pdf_loader).
-        incluir_tablas: Whether to extract tables as additional chunks.
-        incluir_secciones: Whether to extract sections as additional chunks.
-
-    Returns:
-        Expanded list of chunks for indexing.
     """
-    chunks_finales = []
+    final_chunks = []
 
-    for doc in documentos:
-        texto = doc["text"]
+    for doc in documents:
+        text = doc["text"]
         meta = doc["metadata"]
-        plano_id = meta["plano_id"]
-        pagina = meta["pagina"]
+        blueprint_id = meta["blueprint_id"]
+        page = meta["page"]
 
-        # Always include the full-page chunk for context
-        chunks_finales.append(doc)
+        final_chunks.append(doc)
 
-        # Extract tables as additional chunks
-        if incluir_tablas:
+        if include_tables:
             try:
-                tabla_chunks = chunk_por_tablas(texto, meta, plano_id, pagina)
-                chunks_finales.extend(tabla_chunks)
+                table_chunks = chunk_by_tables(text, meta, blueprint_id, page)
+                final_chunks.extend(table_chunks)
             except Exception as e:
-                logger.warning(f"Error extracting tables from {plano_id} p{pagina}: {e}")
+                logger.warning(f"Error extracting tables from {blueprint_id} p{page}: {e}")
 
-        # Extract sections as additional chunks
-        if incluir_secciones:
+        if include_sections:
             try:
-                seccion_chunks = chunk_por_secciones(texto, meta, plano_id, pagina)
-                chunks_finales.extend(seccion_chunks)
+                section_chunks = chunk_by_sections(text, meta, blueprint_id, page)
+                final_chunks.extend(section_chunks)
             except Exception as e:
-                logger.warning(f"Error extracting sections from {plano_id} p{pagina}: {e}")
+                logger.warning(f"Error extracting sections from {blueprint_id} p{page}: {e}")
 
-    logger.info(f"Chunks created: {len(chunks_finales)} (from {len(documentos)} pages)")
-    return chunks_finales
-
-
-# English Aliases for Clean Global Naming Conventions
-chunk_by_page = chunk_por_pagina
-chunk_by_tables = chunk_por_tablas
-chunk_by_sections = chunk_por_secciones
-create_intelligent_chunks = crear_chunks_inteligentes
-
+    logger.info(f"Chunks created: {len(final_chunks)} (from {len(documents)} pages)")
+    return final_chunks

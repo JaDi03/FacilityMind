@@ -14,7 +14,7 @@ import google.generativeai as genai
 
 from config import GEMINI_API_KEY, GeminiModels, Thresholds
 from models.schemas import ReasonerOutput, ValidatorOutput, SourceCitation, SafetyAssessment
-from ingestion.pdf_loader import cargar_plano_como_texto
+from ingestion.pdf_loader import load_blueprint_as_text
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +43,12 @@ async def agente_validador(
     Returns:
         ValidatorOutput with the final approval or rejection decision.
     """
-    logger.info(f"[Validator] Starting verification | initial_confidence={reasoner.confianza_inicial:.2f}")
+    logger.info(f"[Validator] Starting verification | initial_confidence={reasoner.initial_confidence:.2f}")
 
     # --- Load full blueprint for verification ---
     plano_texto = ""
     if plano_completo_path and os.path.exists(plano_completo_path):
-        plano_texto = cargar_plano_como_texto(plano_completo_path)
+        plano_texto = load_blueprint_as_text(plano_completo_path)
         logger.info(f"[Validator] Blueprint loaded for verification: {len(plano_texto)} characters")
     else:
         # Fallback to RAG context if full blueprint is unavailable
@@ -64,9 +64,9 @@ async def agente_validador(
         logger.warning(f"[Validator] Error serializing citations: {e}")
 
     circuito_json = "null"
-    if reasoner.circuito_trazado:
+    if reasoner.traced_circuit:
         try:
-            circuito_json = json.dumps(reasoner.circuito_trazado.model_dump(), ensure_ascii=False)
+            circuito_json = json.dumps(reasoner.traced_circuit.model_dump(), ensure_ascii=False)
         except Exception:
             pass
 
@@ -78,22 +78,22 @@ async def agente_validador(
     if not active_cache and plano_texto == "(Original blueprint text not available for verification)":
         logger.warning("[Validator] ABORT: No cache and no blueprint text. Auto-rejecting to prevent approval of unverified data.")
         return ValidatorOutput(
-            aprobado=False,
-            respuesta_final=reasoner.respuesta_candidata,
-            confianza_final=0.0,
-            sources_verificadas=[],
-            advertencias=["No blueprint data available for verification — auto-rejected"],
-            requiere_supervisor=True,
-            motivo_rechazo="Cannot verify: no blueprint data loaded. Upload the PDF first.",
-            alucinaciones_detectadas=["Unable to verify any claims — no source data"],
+            approved=False,
+            final_response=reasoner.candidate_response,
+            final_confidence=0.0,
+            verified_sources=[],
+            warnings=["No blueprint data available for verification — auto-rejected"],
+            requires_supervisor=True,
+            rejection_reason="Cannot verify: no blueprint data loaded. Upload the PDF first.",
+            detected_hallucinations=["Unable to verify any claims — no source data"],
             safety=SafetyAssessment(
-                nivel_riesgo="high",
-                descripcion_riesgo="Response cannot be verified without blueprint access"
+                risk_level="high",
+                risk_description="Response cannot be verified without blueprint access"
             )
         )
     
     prompt = f"""CANDIDATE RESPONSE TO VALIDATE:
-{reasoner.respuesta_candidata}
+{reasoner.candidate_response}
 
 SOURCES CITED BY REASONER:
 {sources_json}
@@ -136,11 +136,31 @@ Generate your validation in the specified strict JSON format.
                 active_cache = None
                 
         if not active_cache:
+            # SAFETY CHECK FOR FALLBACK: If cache failed and we don't have text, do NOT call Gemini!
+            if plano_texto == "(Original blueprint text not available for verification)" or not plano_texto.strip():
+                logger.warning("[Validator] Cache failed and no fallback text available. Auto-rejecting.")
+                return _fallback_validation(reasoner, error="Cache failed and no blueprint text available for manual verification.")
+                
+            # Rebuild prompt because the original one instructed Gemini to use the cache!
+            fallback_prompt = f"""CANDIDATE RESPONSE TO VALIDATE:
+{reasoner.candidate_response}
+
+SOURCES CITED BY REASONER:
+{sources_json}
+
+TRACED CIRCUIT PATH:
+{circuito_json}
+
+ORIGINAL BLUEPRINT TEXT:
+{plano_texto[:150000]}
+
+Generate your validation in the specified strict JSON format.
+"""
             # --- Traditional Execution ---
             response = await asyncio.to_thread(
                 v2_client.models.generate_content,
                 model=MODEL,
-                contents=prompt,
+                contents=fallback_prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.1,
                     response_mime_type="application/json",
@@ -161,10 +181,10 @@ Generate your validation in the specified strict JSON format.
             return _fallback_validation(reasoner)
 
         # Normalize and validate data structures
-        if "sources_verificadas" in data and isinstance(data["sources_verificadas"], list):
-            data["sources_verificadas"] = [SourceCitation(**s) for s in data["sources_verificadas"]]
+        if "verified_sources" in data and isinstance(data["verified_sources"], list):
+            data["verified_sources"] = [SourceCitation(**s) for s in data["verified_sources"]]
         else:
-            data["sources_verificadas"] = []
+            data["verified_sources"] = []
 
         if "safety" in data and isinstance(data["safety"], dict):
             data["safety"] = SafetyAssessment(**data["safety"])
@@ -172,13 +192,13 @@ Generate your validation in the specified strict JSON format.
             data["safety"] = SafetyAssessment()
 
         # Ensure required fields are populated
-        data.setdefault("aprobado", False)
-        data.setdefault("respuesta_final", reasoner.respuesta_candidata)
-        data.setdefault("confianza_final", reasoner.confianza_inicial * 0.8)
-        data.setdefault("advertencias", [])
-        data.setdefault("requiere_supervisor", True)
-        data.setdefault("motivo_rechazo", None)
-        data.setdefault("alucinaciones_detectadas", [])
+        data.setdefault("approved", False)
+        data.setdefault("final_response", reasoner.candidate_response)
+        data.setdefault("final_confidence", reasoner.initial_confidence * 0.8)
+        data.setdefault("warnings", [])
+        data.setdefault("requires_supervisor", True)
+        data.setdefault("rejection_reason", None)
+        data.setdefault("detected_hallucinations", [])
 
         output = ValidatorOutput(**data)
 
@@ -186,9 +206,9 @@ Generate your validation in the specified strict JSON format.
         output = _aplicar_thresholds(output, reasoner)
 
         logger.info(
-            f"[Validator] Verification complete | approved={output.aprobado}, "
-            f"final_conf={output.confianza_final:.2f}, supervisor={output.requiere_supervisor}, "
-            f"hallucinations={len(output.alucinaciones_detectadas)}"
+            f"[Validator] Verification complete | approved={output.approved}, "
+            f"final_conf={output.final_confidence:.2f}, supervisor={output.requires_supervisor}, "
+            f"hallucinations={len(output.detected_hallucinations)}"
         )
         return output
 
@@ -201,68 +221,68 @@ def _aplicar_thresholds(output: ValidatorOutput, reasoner: ReasonerOutput) -> Va
     """Applies additional threshold rules and safety logic to the validation decision."""
 
     # Rule: Reject automatically if hallucinations are detected
-    if output.alucinaciones_detectadas:
-        output.aprobado = False
-        output.confianza_final = min(output.confianza_final, 0.4)
-        output.requiere_supervisor = True
-        if not output.motivo_rechazo:
-            output.motivo_rechazo = f"Hallucinations detected: {len(output.alucinaciones_detectadas)}"
+    if output.detected_hallucinations:
+        output.approved = False
+        output.final_confidence = min(output.final_confidence, 0.4)
+        output.requires_supervisor = True
+        if not output.rejection_reason:
+            output.rejection_reason = f"Hallucinations detected: {len(output.detected_hallucinations)}"
 
     # Rule: Critical risk always requires supervisor approval and rejection
-    if output.safety and output.safety.nivel_riesgo == "critical":
-        output.requiere_supervisor = True
-        output.aprobado = False
-        output.confianza_final = min(output.confianza_final, 0.3)
-        if not output.motivo_rechazo:
-            output.motivo_rechazo = "Critical safety risk detected"
+    if output.safety and output.safety.risk_level == "critical":
+        output.requires_supervisor = True
+        output.approved = False
+        output.final_confidence = min(output.final_confidence, 0.3)
+        if not output.rejection_reason:
+            output.rejection_reason = "Critical safety risk detected"
 
     # Rule: Confidence Thresholds
-    if output.confianza_final >= Thresholds.VALIDATOR_APPROVE:
+    if output.final_confidence >= Thresholds.VALIDATOR_APPROVE:
         # High confidence: approve (unless high/critical risk is present)
-        if not output.alucinaciones_detectadas and output.safety.nivel_riesgo not in ["high", "critical"]:
-            output.aprobado = True
-    elif output.confianza_final >= Thresholds.VALIDATOR_REJECT:
+        if not output.detected_hallucinations and output.safety.risk_level not in ["high", "critical"]:
+            output.approved = True
+    elif output.final_confidence >= Thresholds.VALIDATOR_REJECT:
         # Medium confidence: approve but require supervisor review
-        output.requiere_supervisor = True
+        output.requires_supervisor = True
     else:
         # Low confidence: reject
-        output.aprobado = False
-        output.requiere_supervisor = True
-        if not output.motivo_rechazo:
-            output.motivo_rechazo = f"Final confidence too low: {output.confianza_final:.2f}"
+        output.approved = False
+        output.requires_supervisor = True
+        if not output.rejection_reason:
+            output.rejection_reason = f"Final confidence too low: {output.final_confidence:.2f}"
 
     # Rule: Safety detection for dangerous operations (e.g., bypassing breakers)
-    texto_respuesta = (output.respuesta_final or "").lower()
+    texto_respuesta = (output.final_response or "").lower()
     dangerous_keywords = ["bridge", "jumper", "bypass", "skip", "puentear", "puente"]
     if any(keyword in texto_respuesta for keyword in dangerous_keywords):
-        output.safety.riesgo_electrico = True
-        output.safety.nivel_riesgo = "critical"
-        output.aprobado = False
-        output.requiere_supervisor = True
-        output.advertencias.append("DANGEROUS OPERATION DETECTED: Unauthorized electrical system modification requested")
-        if not output.motivo_rechazo:
-            output.motivo_rechazo = "Query involves dangerous and potentially illegal technical operations"
+        output.safety.electrical_risk = True
+        output.safety.risk_level = "critical"
+        output.approved = False
+        output.requires_supervisor = True
+        output.warnings.append("DANGEROUS OPERATION DETECTED: Unauthorized electrical system modification requested")
+        if not output.rejection_reason:
+            output.rejection_reason = "Query involves dangerous and potentially illegal technical operations"
 
     return output
 
 
 def _fallback_validation(reasoner: ReasonerOutput, error: str = "") -> ValidatorOutput:
     """Fallback mechanism for validation failures."""
-    advertencias = ["Validation system error — manual technical review required"]
+    warnings = ["Validation system error — manual technical review required"]
     if error:
-        advertencias.append(f"Technical error: {error[:100]}")
+        warnings.append(f"Technical error: {error[:100]}")
 
     return ValidatorOutput(
-        aprobado=False,
-        respuesta_final=reasoner.respuesta_candidata,
-        confianza_final=reasoner.confianza_inicial * 0.7,
-        sources_verificadas=[],
-        advertencias=advertencias,
-        requiere_supervisor=True,
-        motivo_rechazo="Automated validation relies on RAG context (full text not loaded)" if not error else f"Error: {error[:150]}",
-        alucinaciones_detectadas=[],
+        approved=False,
+        final_response=reasoner.candidate_response,
+        final_confidence=reasoner.initial_confidence * 0.7,
+        verified_sources=[],
+        warnings=warnings,
+        requires_supervisor=True,
+        rejection_reason="Automated validation relies on RAG context (full text not loaded)" if not error else f"Error: {error[:150]}",
+        detected_hallucinations=[],
         safety=SafetyAssessment(
-            nivel_riesgo="medium",
-            descripcion_riesgo="Unable to complete automated safety verification"
+            risk_level="medium",
+            risk_description="Unable to complete automated safety verification"
         )
     )

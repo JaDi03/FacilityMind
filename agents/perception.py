@@ -108,23 +108,23 @@ If an image is provided, describe the visible object with technical precision.
             data = _fallback_parsing(text, raw)
 
         # Ensure required fields are populated
-        if "objetivo_consulta" not in data or not data["objetivo_consulta"]:
-            data["objetivo_consulta"] = text if text else "Query objective not specified"
-        if "confianza_percepcion" not in data:
-            data["confianza_percepcion"] = 0.5
+        if "query_objective" not in data or not data["query_objective"]:
+            data["query_objective"] = text if text else "Query objective not specified"
+        if "perception_confidence" not in data:
+            data["perception_confidence"] = 0.5
 
         output = PerceptionOutput(**data)
-        logger.info(f"[Perception] Analysis complete | floor={output.piso}, room={output.habitacion}, confidence={output.confianza_percepcion:.2f}")
+        logger.info(f"[Perception] Analysis complete | floor={output.floor}, room={output.room}, confidence={output.perception_confidence:.2f}")
         return output
 
     except Exception as e:
         logger.error(f"[Perception] Error during Gemini API call: {e}")
         # Minimum fallback to maintain pipeline integrity
         return PerceptionOutput(
-            objetivo_consulta=text if text else "Processing error",
-            confianza_percepcion=0.1,
-            raw_transcripcion=text if text else None,
-            notas_urgencia=f"System error: {str(e)[:100]}"
+            query_objective=text if text else "Processing error",
+            perception_confidence=0.1,
+            raw_transcription=text if text else None,
+            urgency_notes=f"System error: {str(e)[:100]}"
         )
 
 
@@ -136,42 +136,42 @@ def _fallback_parsing(text: str, raw_response: str) -> dict:
     import re
 
     data = {
-        "piso": None,
-        "torre": None,
-        "habitacion": None,
-        "objeto_detectado": None,
-        "objetivo_consulta": text,
-        "disciplina": None,
-        "notas_urgencia": None,
-        "idioma_detectado": "en",
-        "confianza_percepcion": 0.3,
-        "raw_transcripcion": text,
+        "floor": None,
+        "tower": None,
+        "room": None,
+        "detected_object": None,
+        "query_objective": text,
+        "discipline": None,
+        "urgency_notes": None,
+        "detected_language": "en",
+        "perception_confidence": 0.3,
+        "raw_transcription": text,
     }
 
     # Extract floor numbers
     piso_match = re.search(r'floor\s+(\d+|GF|B\d+|S\d+)', text, re.IGNORECASE)
     if piso_match:
-        data["piso"] = piso_match.group(1).upper()
+        data["floor"] = piso_match.group(1).upper()
 
     # Extract tower identifiers
     torre_match = re.search(r'tower\s+(\d+|[A-Z])', text, re.IGNORECASE)
     if torre_match:
-        data["torre"] = torre_match.group(1).upper()
+        data["tower"] = torre_match.group(1).upper()
 
     # Extract room/unit identifiers
     hab_match = re.search(r'(?:room|unit|local|office|chamber)\s+([\w-]+)', text, re.IGNORECASE)
     if hab_match:
-        data["habitacion"] = hab_match.group(1)
+        data["room"] = hab_match.group(1)
 
     # Discipline detection
     text_lower = text.lower()
     if any(w in text_lower for w in ["breaker", "outlet", "panel", "electrical", "cable", "power", "voltage", "amperage"]):
-        data["disciplina"] = "electrical"
+        data["discipline"] = "electrical"
     elif any(w in text_lower for w in ["piping", "drainage", "valve", "plumbing", "water", "leak", "cleanout"]):
-        data["disciplina"] = "plumbing"
+        data["discipline"] = "plumbing"
 
     # Urgency detection
     if any(w in text_lower for w in ["urgent", "emergency", "danger", "sparks", "flooding", "burnt"]):
-        data["notas_urgencia"] = "Potential emergency situation detected"
+        data["urgency_notes"] = "Potential emergency situation detected"
 
     return data

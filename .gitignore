@@ -76,3 +76,7 @@ test_*.txt
 
 # Auto-generated visualizations
 data/processed/visualizations/
+
+# Internal Context / Notes
+context/
+

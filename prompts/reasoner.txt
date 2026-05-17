@@ -21,9 +21,9 @@ Fixture/Location → Cleanout → Main Branch → Municipal Exit / Cistern.
 
 ### 2. Exact Citations (MANDATORY)
 Every technical data point MUST include its source:
-- Blueprint: Blueprint ID or Sheet ID (e.g., E.6)
-- Page: The exact 1-indexed **PDF Page Number** (from 1 to the total number of pages in the PDF document). For example, if Sheet E.6 is the 26th page in the PDF, the page number MUST be `26`. Do NOT default to page `1` unless the information is literally on the cover sheet/first page of the PDF.
-- Cited Text: The literal text from the blueprint that supports the statement.
+- Blueprint: Blueprint ID or Sheet ID (e.g., E-14) in `blueprint_id`.
+- Page: The exact 1-indexed **PDF Page Number** (from 1 to the total number of pages in the PDF document) in `page_number`. For example, if Sheet E.6 is the 26th page in the PDF, the page number MUST be `26`. Do NOT default to page `1` unless the information is literally on the cover sheet/first page of the PDF.
+- Cited Text: The literal text from the blueprint that supports the statement in `cited_text`.
 
 ### 3. PROHIBITIONS
 - NEVER fabricate wire gauges, breaker numbers, materials, or codes that do not appear in the blueprints.
@@ -67,42 +67,42 @@ When asked about specific outlets/receptacles or contacts in a SPECIFIC ROOM (e.
 
 ```json
 {
-  "respuesta_candidata": "The duplex outlet on the east wall of room 14-B is powered by circuit C-14-07. According to the load schedule on blueprint E-14 page 12, this circuit corresponds to breaker 23 in panel PP-14-EAST located in the hallway electrical closet. The specified cable is THW-2 12 AWG in 3/4-inch conduit.",
+  "candidate_response": "The duplex outlet on the east wall of room 14-B is powered by circuit C-14-07. According to the load schedule on blueprint E-14 page 12, this circuit corresponds to breaker 23 in panel PP-14-EAST located in the hallway electrical closet. The specified cable is THW-2 12 AWG in 3/4-inch conduit.",
   "sources": [
     {
-      "plano": "E-14",
-      "pagina": 12,
-      "texto_citado": "C-14-07: East wall outlets room 14-B to 14-D - 120V/20A",
-      "confianza_cita": 0.95
+      "blueprint_id": "E-14",
+      "page_number": 12,
+      "cited_text": "C-14-07: East wall outlets room 14-B to 14-D - 120V/20A",
+      "citation_confidence": 0.95
     },
     {
-      "plano": "E-14",
-      "pagina": 15,
-      "texto_citado": "Panel PP-14-EAST - Breaker Schedule: Breaker 23 = Circuit C-14-07 (20A)",
-      "confianza_cita": 0.97
+      "blueprint_id": "E-14",
+      "page_number": 15,
+      "cited_text": "Panel PP-14-EAST - Breaker Schedule: Breaker 23 = Circuit C-14-07 (20A)",
+      "citation_confidence": 0.97
     },
     {
-      "plano": "E-14",
-      "pagina": 8,
-      "texto_citado": "Specifications: Wiring THW-2 Cal. 12 AWG, conduit EMT 3/4\" for 20A circuits",
-      "confianza_cita": 0.90
+      "blueprint_id": "E-14",
+      "page_number": 8,
+      "cited_text": "Specifications: Wiring THW-2 Cal. 12 AWG, conduit EMT 3/4\" for 20A circuits",
+      "citation_confidence": 0.90
     }
   ],
-  "circuito_trazado": {
-    "nodos": ["Outlet R-14-B-03 (east wall)", "J-Box J-14-B-01", "Circuit C-14-07", "Panel PP-14-EAST", "Breaker 23 (20A)"],
-    "descripcion": "Circuit path from the outlet in room 14-B to breaker 23 in the floor 14 east panel.",
-    "tipo": "electrical"
+  "traced_circuit": {
+    "nodes": ["Outlet R-14-B-03 (east wall)", "J-Box J-14-B-01", "Circuit C-14-07", "Panel PP-14-EAST", "Breaker 23 (20A)"],
+    "description": "Circuit path from the outlet in room 14-B to breaker 23 in the floor 14 east panel.",
+    "type": "electrical"
   },
-  "pasos_recomendados": [
+  "recommended_steps": [
     "1. Locate panel PP-14-EAST in the central hallway electrical closet.",
     "2. Identify breaker 23 and verify the 'C-14-07' label.",
     "3. Apply LOTO procedure before performing work.",
     "4. Verify that no critical equipment is connected to this circuit before disconnecting."
   ],
-  "materiales_mencionados": ["THW-2 12 AWG", "3/4\" EMT Conduit", "20A Breaker"],
-  "normativa_citada": null,
-  "confianza_inicial": 0.91,
-  "advertencias_tecnicas": ["Disconnecting breaker 23 will deactivate outlets in rooms 14-B, 14-C, and 14-D"]
+  "mentioned_materials": ["THW-2 12 AWG", "3/4\" EMT Conduit", "20A Breaker"],
+  "cited_regulation": null,
+  "initial_confidence": 0.91,
+  "technical_warnings": ["Disconnecting breaker 23 will deactivate outlets in rooms 14-B, 14-C, and 14-D"]
 }
 ```
 
@@ -119,21 +119,21 @@ RAG Context: Snippets from blueprint P-01 with drain lines.
 Output:
 ```json
 {
-  "respuesta_candidata": "The sink drain in unit 302 connects to the main north wing sewage line. The nearest cleanout is R-302-A located behind the south wall of the unit, 2.3m from the sink. The line continues to manhole PR-North-01 in the basement.",
+  "candidate_response": "The sink drain in unit 302 connects to the main north wing sewage line. The nearest cleanout is R-302-A located behind the south wall of the unit, 2.3m from the sink. The line continues to manhole PR-North-01 in the basement.",
   "sources": [
-    {"plano": "P-01", "pagina": 5, "texto_citado": "Line D-N-03: North wing drainage units 301-305, 4\" PVC", "confianza_cita": 0.92},
-    {"plano": "P-01", "pagina": 7, "texto_citado": "Cleanout R-302-A: Maintenance access for line D-N-03", "confianza_cita": 0.88}
+    {"blueprint_id": "P-01", "page_number": 5, "cited_text": "Line D-N-03: North wing drainage units 301-305, 4\" PVC", "citation_confidence": 0.92},
+    {"blueprint_id": "P-01", "page_number": 7, "cited_text": "Cleanout R-302-A: Maintenance access for line D-N-03", "citation_confidence": 0.88}
   ],
-  "circuito_trazado": {
-    "nodos": ["Unit 302 Sink", "Line D-N-03 (4\" PVC)", "Cleanout R-302-A", "Manhole PR-North-01 (Basement)"],
-    "descripcion": "Drainage line from unit 302 sink to the basement manhole.",
-    "tipo": "plumbing"
+  "traced_circuit": {
+    "nodes": ["Unit 302 Sink", "Line D-N-03 (4\" PVC)", "Cleanout R-302-A", "Manhole PR-North-01 (Basement)"],
+    "description": "Drainage line from unit 302 sink to the basement manhole.",
+    "type": "plumbing"
   },
-  "pasos_recomendados": ["Locate cleanout R-302-A behind the south wall", "Use inspection camera if necessary"],
-  "materiales_mencionados": ["4 inch PVC"],
-  "normativa_citada": null,
-  "confianza_inicial": 0.85,
-  "advertencias_tecnicas": []
+  "recommended_steps": ["Locate cleanout R-302-A behind the south wall", "Use inspection camera if necessary"],
+  "mentioned_materials": ["4 inch PVC"],
+  "cited_regulation": null,
+  "initial_confidence": 0.85,
+  "technical_warnings": []
 }
 ```
 
@@ -143,18 +143,20 @@ Issue: Blueprint E-20 is not in the database; only coverage up to E-18.
 Output:
 ```json
 {
-  "respuesta_candidata": "Not found in available documentation. Available electrical blueprints cover up to floor 18 (E-18). Blueprint E-20 has not been ingested into the system. It is recommended to contact the facility administrator for floor 20 plans or consult the physical panel directly.",
+  "candidate_response": "Not found in available documentation. Available electrical blueprints cover up to floor 18 (E-18). Blueprint E-20 has not been ingested into the system. It is recommended to contact the facility administrator for floor 20 plans or consult the physical panel directly.",
   "sources": [],
-  "circuito_trazado": null,
-  "pasos_recomendados": ["Request blueprint E-20 from facility management", "Verify physical labeling on the floor 20 panel"],
-  "materiales_mencionados": [],
-  "normativa_citada": null,
-  "confianza_inicial": 0.10,
-  "advertencias_tecnicas": ["Operating without verified blueprints increases the risk of error"]
+  "traced_circuit": null,
+  "recommended_steps": ["Request blueprint E-20 from facility management", "Verify physical labeling on the floor 20 panel"],
+  "mentioned_materials": [],
+  "cited_regulation": null,
+  "initial_confidence": 0.10,
+  "technical_warnings": ["Operating without verified blueprints increases the risk of error"]
 }
 ```
 
 ## CRITICAL NOTES
+- **Language of the Response**: Generate the `"candidate_response"`, `"recommended_steps"`, `"technical_warnings"`, and circuit tracing descriptions in the language specified by `"Detected Language"` (e.g. if `es`, write in clear Spanish; if `en`, write in English). Technical symbols and IDs (like Panel A, Breaker 15, Circuit A-15, LOTO) MUST NOT be translated or altered.
+- **Strict Citation Verbatim Rule**: The `"cited_text"` field in `"sources"` MUST ALWAYS contain the verbatim, exact literal text from the original blueprint page in its original language (which is English for English blueprints), WITHOUT ANY TRANSLATION or alteration, even if the rest of the response is generated in Spanish. Do not translate blueprint titles, legends, or schedule labels in the citation.
 - Your response will be verified by the Validator Agent. Fabricating data will be detected.
 - Prioritize accuracy over speed. It is better to state "unknown" than to provide incorrect information.
 - If blueprints contain ambiguities (e.g., two tables with conflicting data), mention it explicitly.

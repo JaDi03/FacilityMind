@@ -1,4 +1,3 @@
-
 """
 FacilityMind — Backend FastAPI
 REST API for blueprint ingestion and multi-agent queries.
@@ -31,9 +30,9 @@ from config import (
 from models.schemas import FacilityMindResponse, PlanoMetadata
 
 # Ingestion
-from ingestion.pdf_loader import cargar_plano, listar_planos_disponibles
-from ingestion.chunker import crear_chunks_inteligentes
-from ingestion.vector_store import PlanoVectorStore
+from ingestion.pdf_loader import load_blueprint, list_available_blueprints
+from ingestion.chunker import create_intelligent_chunks
+from ingestion.vector_store import BlueprintVectorStore
 
 # Agents
 from agents.perception import agente_percepcion
@@ -49,7 +48,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)  # Main application logger
 
 # ─── Global State ───
-vector_store: PlanoVectorStore = None
+vector_store: BlueprintVectorStore = None
 loaded_blueprints: dict = {}
 
 
@@ -60,8 +59,8 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 FacilityMind Backend starting...")
 
     # Initialize Vector Store
-    vector_store = PlanoVectorStore(persist_path=CHROMA_PATH, collection=COLLECTION_NAME)
-    logger.info(f"📦 VectorStore ready: {vector_store.contar_chunks()} existing chunks")
+    vector_store = BlueprintVectorStore(persist_path=CHROMA_PATH, collection=COLLECTION_NAME)
+    logger.info(f"📦 VectorStore ready: {vector_store.count_chunks()} existing chunks")
 
     # Load persisted loaded_blueprints if exists
     persisted_path = Path("data/processed/loaded_blueprints.json")
@@ -102,10 +101,10 @@ app.add_middleware(
 
 class ConsultaRequest(BaseModel):
     """Request for text-based queries."""
-    pregunta: str
-    edificio_id: Optional[str] = "default"
-    disciplina: Optional[str] = None
-    piso: Optional[str] = None
+    query_text: str
+    building_id: Optional[str] = "default"
+    discipline: Optional[str] = None
+    floor: Optional[str] = None
 
 
 class ConsultaResponse(BaseModel):
@@ -115,69 +114,86 @@ class ConsultaResponse(BaseModel):
     error: str = None
 
 
-def ejecutar_ocr_visual_background(pdf_path: str, plano_id: str, edificio_id: str, tipo_plano: str):
+def ejecutar_ocr_visual_background(pdf_path: str, blueprint_id: str, building_id: str, blueprint_type: str):
     """
     Background task to run Vision OCR on ALL pages of a blueprint PDF and index them into Chroma DB.
-    This runs asynchronously, completely bypassing PyMuPDF's text layers to prevent garbage character noise.
+    Uses Gemini's native PDF processing — no PyMuPDF dependency.
     """
-    import fitz
     import time
-    from ingestion.pdf_loader import extraer_texto_con_vision, inferir_piso, inferir_torre
-    from ingestion.chunker import crear_chunks_inteligentes
-    from ingestion.vector_store import PlanoVectorStore
+    from google import genai as genai_v2
+    from config import GEMINI_API_KEY
+    from ingestion.pdf_loader import extract_text_with_vision, infer_floor, infer_tower, _count_pdf_pages
+    from ingestion.chunker import create_intelligent_chunks
+    from ingestion.vector_store import BlueprintVectorStore
     
-    logger.info(f"[Background OCR] Starting Vision OCR for {plano_id} (All pages)...")
+    logger.info(f"[Background OCR] Starting Vision OCR for {blueprint_id} (All pages)...")
     try:
-        doc = fitz.open(pdf_path)
-        total_pages = len(doc)
+        total_pages = _count_pdf_pages(pdf_path)
         
-        vector_store = PlanoVectorStore()
+        # Upload PDF to Gemini ONCE, reuse for all page extractions
+        client = genai_v2.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
+        uploaded_file = client.files.upload(file=pdf_path, config={'display_name': f'{blueprint_id}_ocr'})
+        
+        file_info = client.files.get(name=uploaded_file.name)
+        while file_info.state.name == "PROCESSING":
+            time.sleep(2)
+            file_info = client.files.get(name=uploaded_file.name)
+        
+        if file_info.state.name == "FAILED":
+            raise Exception("Google Gemini failed to process the PDF document.")
+        
+        logger.info(f"[Background OCR] PDF uploaded to Gemini. Processing {total_pages} pages...")
+        
+        vector_store = BlueprintVectorStore()
         vision_pages_processed = 0
         
-        for page_num in range(total_pages):
-            page = doc[page_num]
-            logger.info(f"[Background OCR] Processing Page {page_num + 1}/{total_pages} with Vision OCR...")
+        for page_num in range(1, total_pages + 1):
+            logger.info(f"[Background OCR] Processing Page {page_num}/{total_pages} with Vision OCR...")
             
-            # Extract high-fidelity structured text using Vision OCR
-            vision_text = extraer_texto_con_vision(page, page_num + 1)
+            # Extract structured text using Gemini's native PDF understanding
+            vision_text = extract_text_with_vision(pdf_path, page_num, uploaded_file=uploaded_file)
             
             if vision_text.strip():
-                page_piso = inferir_piso(plano_id, page_num, total_pages)
-                torre = inferir_torre(plano_id)
+                page_floor = infer_floor(blueprint_id, page_num - 1, total_pages)
+                tower = infer_tower(blueprint_id)
                 
                 doc_dict = {
-                    "text": f"[PDF Page {page_num + 1} — Vision OCR Extraction]\n{vision_text}",
+                    "text": f"[PDF Page {page_num} — Vision OCR]\n{vision_text}",
                     "metadata": {
-                        "plano_id": str(plano_id),
-                        "tipo_plano": str(tipo_plano if tipo_plano else "electrical"),
-                        "edificio_id": str(edificio_id),
-                        "piso": str(page_piso) if page_piso is not None else "",
-                        "torre": str(torre) if torre is not None else "",
-                        "pagina": int(page_num + 1),
-                        "total_paginas": int(total_pages),
-                        "source": str(f"{plano_id}_p{page_num + 1}"),
+                        "blueprint_id": str(blueprint_id),
+                        "blueprint_type": str(blueprint_type if blueprint_type else "general"),
+                        "building_id": str(building_id),
+                        "floor": str(page_floor) if page_floor is not None else "",
+                        "tower": str(tower) if tower is not None else "",
+                        "page": int(page_num),
+                        "total_pages": int(total_pages),
+                        "source": str(f"{blueprint_id}_p{page_num}"),
                         "file_name": os.path.basename(pdf_path),
                     },
-                    "id": f"{plano_id}_p{page_num + 1}"
+                    "id": f"{blueprint_id}_p{page_num}"
                 }
                 
                 # Chunk and index immediately
-                chunks = crear_chunks_inteligentes([doc_dict], incluir_tablas=True, incluir_secciones=False)
+                chunks = create_intelligent_chunks([doc_dict], include_tables=True, include_sections=False)
                 vector_store.add_chunks(chunks)
                 vision_pages_processed += 1
-                logger.info(f"[Background OCR] Page {page_num + 1}/{total_pages} successfully indexed into Chroma.")
+                logger.info(f"[Background OCR] Page {page_num}/{total_pages} indexed into Chroma.")
             
             # Rate limit guard (avoid 429 Resource Exhausted)
             time.sleep(1.5)
-            
-        doc.close()
-        logger.info(f"[Background OCR] Finished! Visually processed {vision_pages_processed}/{total_pages} pages for {plano_id}.")
         
-        # Update loaded_blueprints metadata with the newly indexed chunks
+        # Clean up the temporary OCR upload
+        try:
+            client.files.delete(name=uploaded_file.name)
+        except Exception:
+            pass
+        
+        logger.info(f"[Background OCR] Finished! Processed {vision_pages_processed}/{total_pages} pages for {blueprint_id}.")
+        
+        # Update loaded_blueprints metadata
         global loaded_blueprints
-        if plano_id in loaded_blueprints:
-            loaded_blueprints[plano_id]["chunks_indexados"] = vector_store.collection.count()
-            # Persist update
+        if blueprint_id in loaded_blueprints:
+            loaded_blueprints[blueprint_id]["indexed_chunks"] = vector_store.collection.count()
             import json
             persisted_path = Path("data/processed/loaded_blueprints.json")
             with open(persisted_path, "w", encoding="utf-8") as f:
@@ -191,34 +207,34 @@ def ejecutar_ocr_visual_background(pdf_path: str, plano_id: str, edificio_id: st
 # ENDPOINTS: Blueprint Ingestion
 # ═══════════════════════════════════════════════════════════════
 
-@app.post("/api/v1/planos/upload")
-async def upload_plano(
+@app.post("/api/v1/blueprints/upload")
+async def upload_blueprint(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    plano_id: str = Form(None),
-    edificio_id: str = Form("default"),
-    tipo_plano: str = Form(None),
+    blueprint_id: str = Form(None),
+    building_id: str = Form("default"),
+    blueprint_type: str = Form(None),
 ):
     """
     Uploads a PDF blueprint, processes it, and indexes it into the vector database.
 
     - **file**: PDF blueprint file
-    - **plano_id**: Optional identifier (e.g., E-14, P-01). Defaults to filename if not provided.
-    - **edificio_id**: Identifier of the building
-    - **tipo_plano**: Optional category (electrical, plumbing, architectural)
+    - **blueprint_id**: Optional identifier (e.g., E-14, P-01). Defaults to filename if not provided.
+    - **building_id**: Identifier of the building
+    - **blueprint_type**: Optional category (electrical, plumbing, architectural)
     """
     global vector_store
 
     if not vector_store:
         raise HTTPException(500, "VectorStore not initialized")
 
-    if not plano_id:
-        plano_id = Path(file.filename).stem
+    if not blueprint_id:
+        blueprint_id = Path(file.filename).stem
 
     # Save file permanently in raw directory
     raw_dir = Path("./data/raw")
     raw_dir.mkdir(parents=True, exist_ok=True)
-    persistent_path = raw_dir / f"{plano_id}.pdf"
+    persistent_path = raw_dir / f"{blueprint_id}.pdf"
     
     try:
         # Stream file to disk to avoid memory overhead
@@ -230,12 +246,12 @@ async def upload_plano(
         logger.info(f"[API] Blueprint PDF saved permanently to: {persistent_path}")
 
         # 1. Load PDF (only extracts clean pages synchronously to prevent CAD text-garbage noise)
-        documentos = cargar_plano(str(persistent_path), plano_id=plano_id, edificio_id=edificio_id)
+        documentos = load_blueprint(str(persistent_path), blueprint_id=blueprint_id, building_id=building_id)
 
         # Overwrite discipline if provided
-        if tipo_plano and documentos:
+        if blueprint_type and documentos:
             for doc in documentos:
-                doc["metadata"]["tipo_plano"] = tipo_plano
+                doc["metadata"]["blueprint_type"] = blueprint_type
 
         # 2. Create intelligent chunks for clean pages (only those with non-empty text content)
         clean_docs = [doc for doc in documentos if doc.get("text", "").strip()]
@@ -243,7 +259,7 @@ async def upload_plano(
         chunks = []
         num_agregados = 0
         if clean_docs:
-            chunks = crear_chunks_inteligentes(clean_docs, incluir_tablas=True, incluir_secciones=False)
+            chunks = create_intelligent_chunks(clean_docs, include_tables=True, include_sections=False)
             # 3. Index clean pages in Chroma
             num_agregados = vector_store.add_chunks(chunks)
 
@@ -251,28 +267,29 @@ async def upload_plano(
         import asyncio
         from agents.cache_manager import cache_blueprint
         
-        cache_result = await asyncio.to_thread(cache_blueprint, str(persistent_path), plano_id)
+        cache_name_reasoner = ""
+        cache_name_validator = ""
+        # Caching disabled dynamically here as previously requested or managed by system.to_thread(cache_blueprint, str(persistent_path), plano_id)
+        cache_result = await asyncio.to_thread(cache_blueprint, str(persistent_path), blueprint_id)
         cache_name_reasoner = cache_result.get("cache_name_reasoner") if cache_result.get("success") else None
         cache_name_validator = cache_result.get("cache_name_validator") if cache_result.get("success") else None
 
         # Determine total pages safely
-        total_paginas = 0
+        total_pages = 0
         if documentos:
-            total_paginas = documentos[0]["metadata"]["total_paginas"]
+            total_pages = documentos[0]["metadata"]["total_pages"]
         else:
-            import fitz
-            doc = fitz.open(str(persistent_path))
-            total_paginas = len(doc)
-            doc.close()
+            from ingestion.pdf_loader import _count_pdf_pages
+            total_pages = _count_pdf_pages(str(persistent_path))
 
         # 5. Register loaded blueprint
-        loaded_blueprints[plano_id] = {
-            "plano_id": plano_id,
-            "edificio_id": edificio_id,
-            "tipo_plano": documentos[0]["metadata"]["tipo_plano"] if documentos else (tipo_plano if tipo_plano else "electrical"),
-            "piso": documentos[0]["metadata"].get("piso") if documentos else None,
-            "total_paginas": total_paginas,
-            "chunks_indexados": num_agregados,
+        loaded_blueprints[blueprint_id] = {
+            "blueprint_id": blueprint_id,
+            "building_id": building_id,
+            "blueprint_type": documentos[0]["metadata"]["blueprint_type"] if documentos else (blueprint_type if blueprint_type else "electrical"),
+            "floor": documentos[0]["metadata"].get("floor") if documentos else None,
+            "total_pages": total_pages,
+            "indexed_chunks": num_agregados,
             "cache_name_reasoner": cache_name_reasoner,
             "cache_name_validator": cache_name_validator,
             "cache_name": cache_name_reasoner, # Backward compatibility
@@ -293,16 +310,16 @@ async def upload_plano(
         background_tasks.add_task(
             ejecutar_ocr_visual_background,
             str(persistent_path),
-            plano_id,
-            edificio_id,
-            tipo_plano
+            blueprint_id,
+            building_id,
+            blueprint_type
         )
 
-        logger.info(f"[API] Blueprint {plano_id} loaded synchronously. Vision OCR background task dispatched.")
+        logger.info(f"[API] Blueprint {blueprint_id} loaded synchronously. Vision OCR background task dispatched.")
 
         return {
             "success": True,
-            "data": loaded_blueprints[plano_id]
+            "data": loaded_blueprints[blueprint_id]
         }
 
     except Exception as e:
@@ -310,34 +327,34 @@ async def upload_plano(
         raise HTTPException(500, f"Error processing blueprint: {str(e)}")
 
 
-@app.get("/api/v1/planos")
-async def listar_planos():
+@app.get("/api/v1/blueprints")
+async def list_blueprints():
     """Lists all blueprints loaded in the system."""
     global vector_store
 
-    planos = vector_store.listar_planos() if vector_store else []
+    planos = vector_store.list_blueprints() if vector_store else []
 
     return {
         "success": True,
         "data": {
-            "planos": planos,
-            "total_chunks": vector_store.contar_chunks() if vector_store else 0,
-            "planos_detalle": [loaded_blueprints.get(p, {"plano_id": p}) for p in planos]
+            "blueprints": planos,
+            "total_chunks": vector_store.count_chunks() if vector_store else 0,
+            "blueprints_detail": [loaded_blueprints.get(p, {"blueprint_id": p}) for p in planos]
         }
     }
 
 
-@app.delete("/api/v1/planos/{plano_id}")
-async def eliminar_plano(plano_id: str):
+@app.delete("/api/v1/blueprints/{blueprint_id}")
+async def delete_blueprint(blueprint_id: str):
     """Deletes a blueprint from the system."""
     global vector_store
 
     if not vector_store:
         raise HTTPException(500, "VectorStore not initialized")
 
-    success = vector_store.delete_plano(plano_id)
+    success = vector_store.delete_blueprint(blueprint_id)
     if success:
-        plano_info = loaded_blueprints.pop(plano_id, None)
+        plano_info = loaded_blueprints.pop(blueprint_id, None)
         if plano_info:
             from agents.cache_manager import delete_cache
             for cache_key in ["cache_name_reasoner", "cache_name_validator", "cache_name"]:
@@ -351,38 +368,38 @@ async def eliminar_plano(plano_id: str):
             persisted_path = Path("data/processed/loaded_blueprints.json")
             with open(persisted_path, "w", encoding="utf-8") as f:
                 json.dump(loaded_blueprints, f, indent=4)
-            logger.info(f"[API] Updated loaded_blueprints on disk after deleting {plano_id}")
+            logger.info(f"[API] Updated loaded_blueprints on disk after deleting {blueprint_id}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to update persisted loaded_blueprints: {e}")
             
-        return {"success": True, "message": f"Blueprint {plano_id} deleted"}
+        return {"success": True, "message": f"Blueprint {blueprint_id} deleted"}
     else:
-        raise HTTPException(404, f"Blueprint {plano_id} not found")
+        raise HTTPException(404, f"Blueprint {blueprint_id} not found")
 
 
 # ═══════════════════════════════════════════════════════════════
 # ENDPOINT: Multi-Agent Query (Full Pipeline)
 # ═══════════════════════════════════════════════════════════════
 
-@app.post("/api/v1/consulta")
-async def consulta(
-    pregunta: str = Form(...),
-    historial: str = Form(None),
-    edificio_id: str = Form("default"),
-    disciplina: str = Form(None),
-    piso: str = Form(None),
-    audio: UploadFile = File(None),
-    imagen: UploadFile = File(None),
+@app.post("/api/v1/query")
+async def query_agents(
+    query_text: str = Form(...),
+    history: str = Form(None),
+    building_id: str = Form("default"),
+    discipline: str = Form(None),
+    floor: str = Form(None),
+    audio_file: UploadFile = File(None),
+    image_file: UploadFile = File(None),
 ):
     """
     Full query pipeline: Perception → Reasoner → Validator → Visualizer.
 
-    - **pregunta**: Query text
-    - **edificio_id**: Building identifier
-    - **disciplina**: Optional filter (electrical, plumbing, etc.)
-    - **piso**: Optional floor filter
-    - **audio**: Optional audio file
-    - **imagen**: Optional image file
+    - **query_text**: Query text
+    - **building_id**: Building identifier
+    - **discipline**: Optional filter (electrical, plumbing, etc.)
+    - **floor**: Optional floor filter
+    - **audio_file**: Optional audio file
+    - **image_file**: Optional image file
     """
     global vector_store
 
@@ -395,35 +412,44 @@ async def consulta(
 
     try:
         # --- Save temporary files ---
-        if audio:
-            suffix = Path(audio.filename).suffix or ".ogg"
+        if audio_file:
+            suffix = Path(audio_file.filename).suffix or ".ogg"
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp.write(await audio.read())
+                content = await audio_file.read()
+                tmp.write(content)
                 audio_path = tmp.name
 
-        if imagen:
-            suffix = Path(imagen.filename).suffix or ".jpg"
+        if image_file:
+            suffix = Path(image_file.filename).suffix or ".jpg"
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp.write(await imagen.read())
+                content = await image_file.read()
+                tmp.write(content)
                 imagen_path = tmp.name
 
+        # ─── AGENT 1: PERCEPTION ───
+        perception = await agente_percepcion(
+            text=query_text,
+            audio_path=audio_path,
+            photo_path=imagen_path
+        )
+        
         # ═══════════════════════════════════════════════════════
         # SEMANTIC ROUTING (Conversational vs Technical)
         # ═══════════════════════════════════════════════════════
         conversational_keywords = ["hola", "qué plano", "que plano", "gracias", "quién eres", "quien eres", "cuál plano", "cual plano"]
-        is_conversational = any(kw in pregunta.lower() for kw in conversational_keywords)
+        is_conversational = any(kw in query_text.lower() for kw in conversational_keywords)
         
-        if is_conversational and not imagen and not audio:
+        if is_conversational and not image_file and not audio_file:
             logger.info("[Pipeline] Query routed to Conversational Agent (skipping technical pipeline)")
             import google.generativeai as genai
             model = genai.GenerativeModel("models/gemini-2.5-flash")
             
-            chat_context = f"Chat History:\n{historial}\n\n" if historial else ""
+            chat_context = f"Chat History:\n{history}\n\n" if history else ""
             plano_info = "No blueprints loaded."
             if loaded_blueprints:
-                plano_info = f"Active blueprint: ID {list(loaded_blueprints.values())[-1].get('plano_id', 'Desconocido')}."
+                plano_info = f"Active blueprint: ID {list(loaded_blueprints.values())[-1].get('blueprint_id', 'Desconocido')}."
                 
-            prompt = f"You are the FacilityMind Orchestrator. {chat_context} The user says: '{pregunta}'. Respond in a friendly, concise, and helpful way (max 1 paragraph) in the user's language (Spanish). Current system state: {plano_info}."
+            prompt = f"You are the FacilityMind Orchestrator. {chat_context} The user says: '{query_text}'. Respond in a friendly, concise, and helpful way (max 1 paragraph) in the user's language (Spanish). Current system state: {plano_info}."
             
             quick_response = await model.generate_content_async(prompt)
             elapsed_ms = int((time.time() - start_time) * 1000)
@@ -431,46 +457,37 @@ async def consulta(
             return {
                 "success": True,
                 "data": FacilityMindResponse(
-                    respuesta=quick_response.text,
+                    response=quick_response.text,
                     sources=[],
-                    confianza=1.0,
-                    advertencias=["Direct conversational response (no technical analysis)"],
-                    requiere_supervisor=False,
-                    tiempo_procesamiento_ms=elapsed_ms
+                    confidence=1.0,
+                    warnings=["Direct conversational response (no technical analysis)"],
+                    requires_supervisor=False,
+                    processing_time_ms=elapsed_ms
                 ).model_dump()
             }
 
-        # ═══════════════════════════════════════════════════════
-        # STEP 1: PERCEPTION AGENT
-        # ═══════════════════════════════════════════════════════
-        logger.info(f"[Pipeline] === STEP 1: Perception ===")
-        perception = await agente_percepcion(
-            audio_path=audio_path,
-            photo_path=imagen_path,
-            text=pregunta
-        )
-
-        # Abort if perception confidence is too low
-        if perception.confianza_percepcion < Thresholds.PERCEPTION_MIN:
+        # Abort if perception confidence is too low ONLY when multimodal media is uploaded.
+        # If it's a pure text query, we let it pass to the Reasoner (Gemini Pro) to answer building-wide or abstract queries.
+        if (audio_file or image_file) and perception.perception_confidence < Thresholds.PERCEPTION_MIN:
             elapsed_ms = int((time.time() - start_time) * 1000)
             return {
                 "success": True,
                 "data": FacilityMindResponse(
-                    respuesta="I couldn't fully understand your query. Please provide a clearer photo or more details about the location and your requirement.",
+                    response="I couldn't fully understand your query. Please provide a clearer photo or more details about the location and your requirement.",
                     sources=[],
-                    confianza=perception.confianza_percepcion,
-                    advertencias=["Low confidence in multimodal perception"],
-                    requiere_supervisor=True,
-                    debug={"percepcion": perception.model_dump()},
-                    tiempo_procesamiento_ms=elapsed_ms
+                    confidence=perception.perception_confidence,
+                    warnings=["Low confidence in multimodal perception"],
+                    requires_supervisor=True,
+                    debug={"perception": perception.model_dump()},
+                    processing_time_ms=elapsed_ms
                 ).model_dump()
             }
 
-        # Overwrite with explicit filters if provided by the user
-        if disciplina:
-            perception.disciplina = disciplina
-        if piso:
-            perception.piso = piso
+        # Auto-apply filters based on multimodal perception or explicit parameters
+        filtro_piso = floor if floor else perception.floor
+        filtro_disciplina = discipline if discipline else perception.discipline
+
+        logger.info(f"Filters applied -> Floor: {filtro_piso}, Discipline: {filtro_disciplina}")
 
         # Retrieve active context cache for native long-context
         active_cache_reasoner = None
@@ -480,32 +497,27 @@ async def consulta(
             active_cache_reasoner = last_plano.get("cache_name_reasoner") or last_plano.get("cache_name")
             active_cache_validator = last_plano.get("cache_name_validator") or last_plano.get("cache_name")
 
-        # ═══════════════════════════════════════════════════════
-        # STEP 2: REASONER AGENT
-        # ═══════════════════════════════════════════════════════
+        # ─── STEP 2: REASONER AGENT ───
         logger.info(f"[Pipeline] === STEP 2: Reasoner ===")
         reasoner = await agente_razonador(
             perception=perception,
             vector_store=vector_store,
             plano_completo_path=None,  # Auto-detect
-            building_id=edificio_id,
+            building_id=building_id,
             active_cache=active_cache_reasoner,
-            historial=historial
+            historial=history
         )
 
-        # ═══════════════════════════════════════════════════════
-        # STEP 3: VALIDATOR AGENT
-        # ═══════════════════════════════════════════════════════
+        # ─── STEP 3: VALIDATOR AGENT ───
         logger.info(f"[Pipeline] === STEP 3: Validator ===")
         validator = await agente_validador(
             reasoner=reasoner,
             plano_completo_path=None,
+            contexto_rag=reasoner.rag_context,
             active_cache=active_cache_validator
         )
 
-        # ═══════════════════════════════════════════════════════
-        # STEP 4: VISUALIZER AGENT
-        # ═══════════════════════════════════════════════════════
+        # ─── STEP 4: VISUALIZER AGENT ───
         logger.info(f"[Pipeline] === STEP 4: Visualizer ===")
         visualizacion = await agente_visualizador(
             reasoner=reasoner,
@@ -513,29 +525,27 @@ async def consulta(
             perception_data=perception.model_dump()
         )
 
-        # ═══════════════════════════════════════════════════════
-        # BUILD FINAL RESPONSE
-        # ═══════════════════════════════════════════════════════
+        # ─── BUILD FINAL RESPONSE ───
         elapsed_ms = int((time.time() - start_time) * 1000)
 
         response = FacilityMindResponse(
-            respuesta=validator.respuesta_final or reasoner.respuesta_candidata,
-            sources=validator.sources_verificadas if validator.sources_verificadas else reasoner.sources,
-            circuito_trazado=reasoner.circuito_trazado,
-            confianza=validator.confianza_final,
-            advertencias=validator.advertencias + reasoner.advertencias_tecnicas,
-            requiere_supervisor=validator.requiere_supervisor,
-            visualizacion=visualizacion,
+            response=validator.final_response or reasoner.candidate_response,
+            sources=validator.verified_sources if validator.verified_sources else reasoner.sources,
+            traced_circuit=reasoner.traced_circuit,
+            confidence=validator.final_confidence,
+            warnings=validator.warnings + reasoner.technical_warnings,
+            requires_supervisor=validator.requires_supervisor,
+            visualization=visualizacion,
             safety=validator.safety,
             debug={
-                "percepcion": perception.model_dump(),
-                "razonador": reasoner.model_dump(),
-                "validador": validator.model_dump(),
+                "perception": perception.model_dump(),
+                "reasoner": reasoner.model_dump(),
+                "validator": validator.model_dump(),
             },
-            tiempo_procesamiento_ms=elapsed_ms
+            processing_time_ms=elapsed_ms
         )
 
-        logger.info(f"[Pipeline] Complete in {elapsed_ms}ms | conf={response.confianza:.2f} | supervisor={response.requiere_supervisor}")
+        logger.info(f"[Pipeline] Complete in {elapsed_ms}ms | conf={response.confidence:.2f} | supervisor={response.requires_supervisor}")
 
         return {
             "success": True,
@@ -549,12 +559,12 @@ async def consulta(
             "success": False,
             "error": str(e),
             "data": FacilityMindResponse(
-                respuesta=f"System error: {str(e)[:200]}. Please try again.",
-                confianza=0.0,
-                advertencias=["System error"],
-                requiere_supervisor=True,
+                response=f"System error: {str(e)[:200]}. Please try again.",
+                confidence=0.0,
+                warnings=["System error"],
+                requires_supervisor=True,
                 debug={"error": str(e)},
-                tiempo_procesamiento_ms=elapsed_ms
+                processing_time_ms=elapsed_ms
             ).model_dump()
         }
 
@@ -578,12 +588,11 @@ async def health():
         "status": "ok",
         "gemini_api": bool(GEMINI_API_KEY),
         "vector_store": vector_store is not None,
-        "chunks_indexados": vector_store.contar_chunks() if vector_store else 0,
+        "chunks_indexados": vector_store.count_chunks() if vector_store else 0,
         "version": "1.0.0",
     }
 
     return {"success": True, "data": status}
-
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -27,9 +27,9 @@ st.set_page_config(
 # ─── Constants ───
 API_BASE = os.getenv("FACILITYMIND_API", "http://127.0.0.1:8000")
 API_HEALTH = f"{API_BASE}/api/v1/health"
-API_CONSULTA = f"{API_BASE}/api/v1/consulta"
-API_PLANOS = f"{API_BASE}/api/v1/planos"
-API_UPLOAD = f"{API_BASE}/api/v1/planos/upload"
+API_QUERY = f"{API_BASE}/api/v1/query"
+API_BLUEPRINTS = f"{API_BASE}/api/v1/blueprints"
+API_UPLOAD = f"{API_BASE}/api/v1/blueprints/upload"
 
 # ─── Custom CSS ───
 st.markdown("""
@@ -111,21 +111,21 @@ def check_api_status():
 
 def get_loaded_blueprints():
     try:
-        resp = requests.get(API_PLANOS, timeout=2)
+        resp = requests.get(API_BLUEPRINTS, timeout=2)
         if resp.status_code == 200:
-            return resp.json().get("data", {}).get("planos_detalle", [])
+            return resp.json().get("data", {}).get("blueprints_detail", [])
         return []
     except:
         return []
 
-def subir_plano(file, plano_id=None, tipo_plano=None):
+def upload_blueprint(file, blueprint_id=None, blueprint_type=None):
     """Uploads a PDF blueprint to the system."""
     files = {"file": (file.name, file.getvalue(), "application/pdf")}
     data = {}
-    if plano_id:
-        data["plano_id"] = plano_id
-    if tipo_plano:
-        data["tipo_plano"] = tipo_plano
+    if blueprint_id:
+        data["blueprint_id"] = blueprint_id
+    if blueprint_type:
+        data["blueprint_type"] = blueprint_type
 
     try:
         resp = requests.post(API_UPLOAD, data=data, files=files, timeout=300)
@@ -157,14 +157,14 @@ with st.sidebar:
     blueprints = get_loaded_blueprints()
     if blueprints:
         for bp in blueprints:
-            with st.expander(f"📄 {bp['plano_id']}"):
-                st.caption(f"Type: {bp.get('tipo_plano', 'N/A')}")
-                st.caption(f"Pages: {bp.get('total_paginas', '?')}")
+            with st.expander(f"📄 {bp['blueprint_id']}"):
+                st.caption(f"Type: {bp.get('blueprint_type', 'N/A')}")
+                st.caption(f"Pages: {bp.get('total_pages', '?')}")
                 
                 # Delete Button
-                if st.button(f"🗑️ Delete {bp['plano_id']}", key=f"del_{bp['plano_id']}", type="secondary", use_container_width=True):
+                if st.button(f"🗑️ Delete {bp['blueprint_id']}", key=f"del_{bp['blueprint_id']}", type="secondary", use_container_width=True):
                     with st.spinner("Deleting blueprint..."):
-                        resp = requests.delete(f"{API_PLANOS}/{bp['plano_id']}", timeout=10)
+                        resp = requests.delete(f"{API_BLUEPRINTS}/{bp['blueprint_id']}", timeout=10)
                         if resp.status_code == 200:
                             st.success("Deleted!")
                             st.rerun()
@@ -178,15 +178,15 @@ with st.sidebar:
         uploaded_pdf = st.file_uploader("Blueprint PDF", type=["pdf"])
         col1, col2 = st.columns(2)
         with col1:
-            plano_id = st.text_input("Blueprint ID", placeholder="e.g., E-14, P-01")
+            blueprint_id = st.text_input("Blueprint ID", placeholder="e.g., E-14, P-01")
         with col2:
-            tipo_plano = st.selectbox("Type", ["", "electrical", "plumbing", "architectural", "structural", "hvac", "fire_protection", "general"])
+            blueprint_type = st.selectbox("Type", ["", "electrical", "plumbing", "architectural", "structural", "hvac", "fire_protection", "general"])
 
         if st.button("📤 Upload Blueprint", use_container_width=True) and uploaded_pdf:
             with st.spinner("Processing blueprint..."):
-                result = subir_plano(uploaded_pdf, plano_id or None, tipo_plano or None)
+                result = upload_blueprint(uploaded_pdf, blueprint_id or None, blueprint_type or None)
                 if result.get("success"):
-                    st.success(f"✅ {result['data']['plano_id']} loaded ({result['data']['chunks_indexados']} chunks)")
+                    st.success(f"✅ {result['data']['blueprint_id']} loaded ({result['data']['indexed_chunks']} chunks)")
                     st.rerun()
                 else:
                     st.error(f"❌ Error: {result.get('error', 'Unknown')}")
@@ -238,8 +238,8 @@ with tab1:
                             for src in tech["sources"]:
                                 st.markdown(f"""
                                 <div class="source-box">
-                                    <strong>{src['plano']} (Page {src['pagina']})</strong><br/>
-                                    {src['texto_citado']}
+                                    <strong>{src['blueprint_id']} (Page {src['page_number']})</strong><br/>
+                                    {src['cited_text']}
                                 </div>
                                 """, unsafe_allow_html=True)
                     
@@ -247,12 +247,12 @@ with tab1:
                     if tech.get("visualization"):
                         viz = tech["visualization"]
                         with st.expander("📊 Technical Diagram", expanded=True):
-                            if viz.get("diagrama_mermaid"):
-                                render_mermaid(viz["diagrama_mermaid"])
-                            if viz.get("resumen_visual"):
-                                st.caption(f"**Description:** {viz['resumen_visual']}")
-                            if viz.get("imagen_generada") and os.path.exists(viz["imagen_generada"]):
-                                st.image(viz["imagen_generada"], use_container_width=True)
+                            if viz.get("mermaid_diagram"):
+                                render_mermaid(viz["mermaid_diagram"])
+                            if viz.get("visual_summary"):
+                                st.caption(f"**Description:** {viz['visual_summary']}")
+                            if viz.get("generated_image") and os.path.exists(viz["generated_image"]):
+                                st.image(viz["generated_image"], use_container_width=True)
 
                     # Warnings
                     if tech.get("warnings"):
@@ -293,40 +293,40 @@ with tab1:
                     historial_str = json.dumps([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]])
 
                 payload = {
-                    "pregunta": final_prompt,
-                    "historial": historial_str,
-                    "disciplina": filtro_disciplina if filtro_disciplina else None,
-                    "piso": filtro_piso if filtro_piso else None,
-                    "edificio_id": "default"
+                    "query_text": final_prompt,
+                    "history": historial_str,
+                    "discipline": filtro_disciplina if filtro_disciplina else None,
+                    "floor": filtro_piso if filtro_piso else None,
+                    "building_id": "default"
                 }
                 
                 files = {}
                 if audio_input:
-                    files["audio"] = (audio_input.name, audio_input.getvalue(), "audio/wav")
+                    files["audio_file"] = (audio_input.name, audio_input.getvalue(), "audio/wav")
                 if photo_input:
-                    files["imagen"] = (photo_input.name, photo_input.getvalue(), photo_input.type)
+                    files["image_file"] = (photo_input.name, photo_input.getvalue(), photo_input.type)
                 
                 try:
                     # Note: We use 'data=payload' because the backend expects Form data (multipart)
-                    resp = requests.post(API_CONSULTA, data=payload, files=files if files else None, timeout=90)
+                    resp = requests.post(API_QUERY, data=payload, files=files if files else None, timeout=90)
                     
                     if resp.status_code == 200:
                         res = resp.json()
                         if res.get("success") and "data" in res:
                             data = res["data"]
-                            full_answer = data["respuesta"]
+                            full_answer = data["response"]
                             st.write(full_answer)
                             
                             tech_data = {
-                                "confidence": data.get("confianza", 0),
+                                "confidence": data.get("confidence", 0),
                                 "sources": data.get("sources", []),
-                                "warnings": data.get("advertencias", []),
-                                "visualization": data.get("visualizacion") or {}
+                                "warnings": data.get("warnings", []),
+                                "visualization": data.get("visualization") or {}
                             }
                             
                             # Visualization
-                            if tech_data["visualization"] and tech_data["visualization"].get("diagrama_mermaid"):
-                                render_mermaid(tech_data["visualization"]["diagrama_mermaid"])
+                            if tech_data["visualization"] and tech_data["visualization"].get("mermaid_diagram"):
+                                render_mermaid(tech_data["visualization"]["mermaid_diagram"])
                             
                             # Save to history
                             st.session_state.messages.append({

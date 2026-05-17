@@ -49,21 +49,21 @@ async def agente_visualizador(
 
     if not VISUALIZATION_ENABLED:
         return VisualizationOutput(
-            resumen_visual="Visualization is disabled in the system configuration."
+            visual_summary="Visualization is disabled in the system configuration."
         )
 
     # Skip visualization if no circuit path was traced
-    if not reasoner.circuito_trazado or not reasoner.circuito_trazado.nodos:
+    if not reasoner.traced_circuit or not reasoner.traced_circuit.nodes:
         logger.info("[Visualizer] No circuit path traced — skipping visualization generation")
         return VisualizationOutput(
-            resumen_visual=reasoner.respuesta_candidata[:200] + "..." if len(reasoner.respuesta_candidata) > 200 else reasoner.respuesta_candidata
+            visual_summary=reasoner.candidate_response[:200] + "..." if len(reasoner.candidate_response) > 200 else reasoner.candidate_response
         )
 
     # --- 1. Generate Technical Image Description ---
     descripcion_imagen = await _generar_descripcion_imagen(reasoner, validator, perception_data)
 
     # --- 2. Generate Mermaid Diagram ---
-    diagrama_mermaid = _generar_diagrama_mermaid(reasoner.circuito_trazado)
+    diagrama_mermaid = _generar_diagrama_mermaid(reasoner.traced_circuit)
 
     # --- 3. Generate Image via Imagen 4.0 Ultra ---
     # User requested to disable image generation from scratch as it hallucinates CAD drawings.
@@ -73,11 +73,11 @@ async def agente_visualizador(
     resumen = _generar_resumen_visual(reasoner)
 
     output = VisualizationOutput(
-        imagen_generada=imagen_path,
-        imagen_descripcion=descripcion_imagen,
-        diagrama_mermaid=diagrama_mermaid,
-        resumen_visual=resumen,
-        mapa_calor=None  # Future work: building heatmap generation
+        generated_image=imagen_path,
+        image_description=descripcion_imagen,
+        mermaid_diagram=diagrama_mermaid,
+        visual_summary=resumen,
+        heatmap=None  # Future work: building heatmap generation
     )
 
     logger.info(f"[Visualizer] Visualization complete | image_generated={imagen_path is not None}, mermaid_ready={diagrama_mermaid is not None}")
@@ -91,12 +91,12 @@ async def _generar_descripcion_imagen(
 ) -> str:
     """Generates detailed prompt for Imagen 4.0 Ultra using Gemini Pro."""
 
-    circuito = reasoner.circuito_trazado
+    circuito = reasoner.traced_circuit
     circuito_json = json.dumps(circuito.model_dump(), ensure_ascii=False, indent=2) if circuito else "null"
 
     prompt = f"""You are a technical visualization expert.
 TRACED CIRCUIT: {circuito_json}
-VALIDATED RESPONSE: {validator.respuesta_final[:500]}
+VALIDATED RESPONSE: {validator.final_response[:500]}
 
 Generate a detailed English description for Imagen 4.0. The goal is to generate a PHOTOREALISTIC or 3D ISOMETRIC representation of the physical space described in the response, NOT a 2D floorplan.
 The user already has the 2D floorplan. We want to show them what this looks like in real life.
@@ -124,11 +124,11 @@ OUTPUT: Return ONLY a JSON object with:
 
 def _fallback_descripcion(circuito) -> str:
     """Fallback description if Gemini fails to generate a dynamic one."""
-    if not circuito or not circuito.nodos:
+    if not circuito or not circuito.nodes:
         return "Technical diagram of building infrastructure system."
 
-    nodos_str = " → ".join(circuito.nodos)
-    tipo = circuito.tipo or "infrastructure"
+    nodos_str = " → ".join(circuito.nodes)
+    tipo = circuito.type or "infrastructure"
 
     return (
         f"A photorealistic, highly detailed 3D rendering of a building {tipo} system installation. "
@@ -139,12 +139,12 @@ def _fallback_descripcion(circuito) -> str:
 
 def _generar_diagrama_mermaid(circuito) -> Optional[str]:
     """Generates a Mermaid.js diagram for the traced circuit path."""
-    if not circuito or not circuito.nodos:
+    if not circuito or not circuito.nodes:
         return None
 
     try:
-        nodos = circuito.nodos
-        tipo = circuito.tipo or "general"
+        nodos = circuito.nodes
+        tipo = circuito.type or "general"
 
         # Determine diagram orientation
         direction = "LR" if len(nodos) <= 5 else "TD"
@@ -264,12 +264,12 @@ async def _generar_imagen_rest_api(descripcion: str, output_dir: str) -> Optiona
 
 def _generar_resumen_visual(reasoner: ReasonerOutput) -> str:
     """Generates a plain-text visual summary of the traced path."""
-    if not reasoner.circuito_trazado:
-        return reasoner.respuesta_candidata[:250]
+    if not reasoner.traced_circuit:
+        return reasoner.candidate_response[:250]
 
-    nodos = reasoner.circuito_trazado.nodos
+    nodos = reasoner.traced_circuit.nodes
     if not nodos:
-        return reasoner.respuesta_candidata[:250]
+        return reasoner.candidate_response[:250]
 
     # Show up to 6 nodes in the summary
     resumen = " → ".join(nodos[:6])
