@@ -139,7 +139,7 @@ if "messages" not in st.session_state:
 
 # ─── Sidebar ───
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/structural.png", width=80)
+    st.image("app/assets/logo.png", width=120)
     st.title("FacilityMind")
     st.markdown("Professional Facility Management AI")
     
@@ -191,20 +191,9 @@ with st.sidebar:
                 else:
                     st.error(f"❌ Error: {result.get('error', 'Unknown')}")
 
-    st.divider()
-    
-    # --- Query Filters ---
-    st.header("🔍 Query Filters")
-    filtro_piso = st.text_input("Floor (optional)", placeholder="e.g., 14, GF, B1")
-    filtro_disciplina = st.selectbox("Discipline (optional)", ["", "electrical", "plumbing", "architectural", "structural", "hvac"])
-
-    st.divider()
-    st.markdown("""
-    **Production Demo Mode**
-    - Multi-Agent Orchestration
-    - RAG + Long Context
-    - Multimodal Perception
-    """)
+    # Local variables for backward-compatibility with backend query filters
+    filtro_piso = None
+    filtro_disciplina = None
 
 # ─── Main Interface ───
 tab1, tab2, tab3 = st.tabs(["💬 Chat", "🤖 Agent Pipeline", "📖 Technical Documentation"])

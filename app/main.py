@@ -428,7 +428,7 @@ async def query_agents(
 
         # ─── AGENT 1: PERCEPTION ───
         # ═══════════════════════════════════════════════════════
-        # PASO 0: LOBSTER TRAP DEEP PROMPT INSPECTION (DPI)
+        # STEP 0: LOBSTER TRAP DEEP PROMPT INSPECTION (DPI)
         # ═══════════════════════════════════════════════════════
         from agents.security import inspect_prompt
         logger.info(f"[Security] Running DPI on query: {query_text}")
@@ -456,7 +456,7 @@ async def query_agents(
             }
 
         # ═══════════════════════════════════════════════════════
-        # PASO 1: AGENTE DE PERCEPCIÓN (Multimodal a Texto)
+        # STEP 1: PERCEPTION AGENT (Multimodal to Text)
         # ═══════════════════════════════════════════════════════
         perception = await agente_percepcion(
             text=query_text,
