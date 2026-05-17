@@ -6,12 +6,24 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
 ![Google Gemini](https://img.shields.io/badge/Google%20Gemini-8E75C2?style=for-the-badge&logo=googlegemini&logoColor=white)
+![Gemini Embeddings](https://img.shields.io/badge/Gemini%20Embeddings-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-FC6D26?style=for-the-badge&logo=database&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 </div>
 
 **FacilityMind** is an advanced, enterprise-grade multi-agent AI system designed to revolutionize building maintenance and facility management operations. It enables technicians and engineers to interactively and visually query complex construction blueprints (electrical, plumbing, architectural, structural) using voice, images, or text.
+
+---
+
+## 📑 Table of Contents
+- [Advanced Google Gemini Integration](#-advanced-google-gemini-integration)
+- [Multi-Agent Architecture](#️-multi-agent-architecture-orchestrated-pipeline)
+- [Technical Stack](#-technical-stack)
+- [Installation & Deployment](#-installation--deployment)
+- [Blueprint Ingestion](#️-blueprint-ingestion)
+- [Supported Safety Standards](#-supported-safety-standards)
+- [License](#-license)
 
 ---
 
@@ -39,39 +51,20 @@ The system leverages cutting-edge capabilities of the Google Gemini API to deliv
 * **Function**: Coordinates **Gemini 2.5 Pro** (optimized for deep technical reasoning and safety validation) with **Gemini 2.5 Flash** (optimized for rapid multimodal perception and vision extraction).
 * **Impact**: Delivers a perfect balance of surgical accuracy, strict hallucination prevention, and API execution speed.
 
+### 🔗 6. Gemini Text Embeddings (`text-embedding-004`)
+* **Function**: Uses Google's native `text-embedding-004` model to generate high-dimensional vector representations of blueprint text chunks for semantic similarity search.
+* **Impact**: Enables the RAG pipeline to retrieve the most contextually relevant blueprint sections for any technician query, powering precise circuit-level answers from thousands of indexed pages.
+
 ---
 
 ## 🛠️ Multi-Agent Architecture (Orchestrated Pipeline)
 
 FacilityMind coordinates **4 specialized AI agents** to verify technical responses and enforce field safety:
+<div align="center">
 
-```mermaid
-graph TD
-    A[Field Technician: Audio/Image/Text] --> B[Perception Agent]
-    B -->|Extracted Location, Floor, Objective| C[Semantic Search RAG]
-    C -->|Retrieves visual text chunks| D[Technical Reasoner]
-    
-    subgraph Native Multimodal Memory
-        E[Google Context Cache: Vector PDF]
-    end
-    
-    E -.->|High-resolution visual inspection| D
-    
-    D -->|Candidate Response + Citations| F[Validator Agent]
-    
-    subgraph Technical & Safety Audit
-        F -->|Citation Verification| G{Verified?}
-        F -->|Safety Code & LOTO Assessment| H{Is Safe?}
-    end
-    
-    G -->|No / Hallucination| I[Reject / Auto-Correct]
-    H -->|Critical Hazard: Breaker bypassing| I
-    
-    G -->|Approved with Confidence >= 85%| J[Visualizer Agent]
-    H -->|Approved + LOTO Warnings| J
-    
-    J -->|Flowcharts, Schematics & Technical Output| K[Technician on Streamlit UI]
-```
+![FacilityMind Multi-Agent Architecture](docs/assets/flow.png)
+
+</div>
 
 ### Core Agents:
 1. **Perception Agent (Gemini 2.5 Flash)**: Processes multimodal inputs (voice recordings, panel photos, or text) to extract structured parameters: building, tower, floor, room, and maintenance goal.
