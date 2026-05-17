@@ -25,6 +25,23 @@ ingress_rules:
         match_type: boolean
         value: true
 
+  # === Block explicit API and Key extraction attempts ===
+  - name: block_api_key_harvesting
+    description: "Block attempts targeting API keys, Gemini API or system tokens explicitly"
+    priority: 96
+    action: DENY
+    deny_message: "[LOBSTER TRAP] Blocked: Unauthorized request for system API credentials/access."
+    conditions:
+      - field: contains_injection_patterns
+        negate: true
+        match_type: boolean
+        value: true
+      # Add custom regex on prompt field (Lobster Trap supports regex matches on inputs)
+      # Since we are using native regex matching, let's target the word patterns
+      - field: intent_category
+        match_type: regex
+        value: "(?i)(gemini api|api key|api_key|access token|system credential|password|token)"
+
   # === Block data exfiltration ===
   - name: block_exfiltration
     description: "Block attempts to send building data to external services"
