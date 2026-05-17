@@ -65,3 +65,13 @@ temp/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Debug / Diagnostic scripts
+check_models.py
+
+# Test files
+test_*.pdf
+test_*.txt
+
+# Auto-generated visualizations
+data/processed/visualizations/
