@@ -66,12 +66,8 @@ async def agente_visualizador(
     diagrama_mermaid = _generar_diagrama_mermaid(reasoner.circuito_trazado)
 
     # --- 3. Generate Image via Imagen 4.0 Ultra ---
+    # User requested to disable image generation from scratch as it hallucinates CAD drawings.
     imagen_path = None
-    try:
-        imagen_path = await _generar_imagen_imagen4(descripcion_imagen, output_dir)
-    except Exception as e:
-        logger.warning(f"[Visualizer] Failed to generate image via Imagen 4.0: {e}")
-        # Fallback: UI will rely on Mermaid diagram for visualization
 
     # --- 4. Generate Visual Summary ---
     resumen = _generar_resumen_visual(reasoner)

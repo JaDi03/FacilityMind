@@ -31,7 +31,8 @@ async def agente_razonador(
     vector_store,
     plano_completo_path: Optional[str] = None,
     building_id: str = "default",
-    active_cache: Optional[str] = None
+    active_cache: Optional[str] = None,
+    historial: Optional[str] = None
 ) -> ReasonerOutput:
     """
     Technical Reasoner Agent: Consults blueprints and generates a candidate technical response.
@@ -93,7 +94,7 @@ async def agente_razonador(
         plano_texto = ""
 
     # --- 3. Prompt Construction & Gemini Pro Execution ---
-    prompt = _construir_prompt(perception, contexto_rag, plano_texto)
+    prompt = _construir_prompt(perception, contexto_rag, plano_texto, historial)
 
     try:
         import asyncio
@@ -253,10 +254,14 @@ def _buscar_plano_automatico(perception: PerceptionOutput, building_id: str) -> 
     return plano_texto
 
 
-def _construir_prompt(perception: PerceptionOutput, contexto_rag: str, plano_texto: str) -> str:
+def _construir_prompt(perception: PerceptionOutput, contexto_rag: str, plano_texto: str, historial: Optional[str] = None) -> str:
     """Constructs the final prompt for the Reasoner Agent."""
 
-    prompt = f"""FIELD TECHNICIAN DATA (from Perception Agent):
+    historial_text = ""
+    if historial:
+        historial_text = f"--- CHAT HISTORY ---\n{historial}\n--------------------\nUse this history to understand the context of the user's current query.\n\n"
+
+    prompt = f"""{historial_text}FIELD TECHNICIAN DATA (from Perception Agent):
 - Floor: {perception.piso or "Not detected"}
 - Tower: {perception.torre or "Not detected"}
 - Room/Unit: {perception.habitacion or "Not detected"}

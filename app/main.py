@@ -56,12 +56,23 @@ planos_cargados: dict = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initializes and cleans up the application context."""
-    global vector_store
+    global vector_store, planos_cargados
     logger.info("🚀 FacilityMind Backend starting...")
 
     # Initialize Vector Store
     vector_store = PlanoVectorStore(persist_path=CHROMA_PATH, collection=COLLECTION_NAME)
     logger.info(f"📦 VectorStore ready: {vector_store.contar_chunks()} existing chunks")
+
+    # Load persisted planos_cargados if exists
+    persisted_path = Path("data/processed/planos_cargados.json")
+    if persisted_path.exists():
+        try:
+            import json
+            with open(persisted_path, "r", encoding="utf-8") as f:
+                planos_cargados.update(json.load(f))
+            logger.info(f"📂 Loaded {len(planos_cargados)} persisted blueprints from disk")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load persisted blueprints: {e}")
 
     yield
 
@@ -182,6 +193,17 @@ async def upload_plano(
             "cache_name": cache_name,
         }
 
+        # Persist to disk so restarts don't lose the registered caches
+        try:
+            import json
+            persisted_path = Path("data/processed/planos_cargados.json")
+            persisted_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(persisted_path, "w", encoding="utf-8") as f:
+                json.dump(planos_cargados, f, indent=4)
+            logger.info("[API] Successfully persisted planos_cargados to disk")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to persist planos_cargados: {e}")
+
         logger.info(f"[API] Blueprint {plano_id} loaded: {num_agregados} chunks")
 
         return {
@@ -238,6 +260,7 @@ async def eliminar_plano(plano_id: str):
 @app.post("/api/v1/consulta")
 async def consulta(
     pregunta: str = Form(...),
+    historial: str = Form(None),
     edificio_id: str = Form("default"),
     disciplina: str = Form(None),
     piso: str = Form(None),
@@ -276,6 +299,39 @@ async def consulta(
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(await imagen.read())
                 imagen_path = tmp.name
+
+        # ═══════════════════════════════════════════════════════
+        # SEMANTIC ROUTING (Conversational vs Technical)
+        # ═══════════════════════════════════════════════════════
+        conversational_keywords = ["hola", "qué plano", "que plano", "gracias", "quién eres", "quien eres", "cuál plano", "cual plano"]
+        is_conversational = any(kw in pregunta.lower() for kw in conversational_keywords)
+        
+        if is_conversational and not imagen and not audio:
+            logger.info("[Pipeline] Query routed to Conversational Agent (skipping technical pipeline)")
+            import google.generativeai as genai
+            model = genai.GenerativeModel("models/gemini-2.5-flash")
+            
+            chat_context = f"Chat History:\n{historial}\n\n" if historial else ""
+            plano_info = "Ningún plano cargado."
+            if planos_cargados:
+                plano_info = f"Plano activo: ID {list(planos_cargados.values())[-1].get('plano_id', 'Desconocido')}."
+                
+            prompt = f"Eres el Orquestador de FacilityMind. {chat_context} El usuario dice: '{pregunta}'. Responde de forma amable y breve (1 párrafo max). Información actual del sistema: {plano_info}."
+            
+            quick_response = await model.generate_content_async(prompt)
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            
+            return {
+                "success": True,
+                "data": FacilityMindResponse(
+                    respuesta=quick_response.text,
+                    sources=[],
+                    confianza=1.0,
+                    advertencias=["Respuesta conversacional directa (sin análisis técnico)"],
+                    requiere_supervisor=False,
+                    tiempo_procesamiento_ms=elapsed_ms
+                ).model_dump()
+            }
 
         # ═══════════════════════════════════════════════════════
         # STEP 1: PERCEPTION AGENT
@@ -324,7 +380,8 @@ async def consulta(
             vector_store=vector_store,
             plano_completo_path=None,  # Auto-detect
             building_id=edificio_id,
-            active_cache=active_cache
+            active_cache=active_cache,
+            historial=historial
         )
 
         # ═══════════════════════════════════════════════════════

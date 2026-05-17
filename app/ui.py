@@ -262,8 +262,15 @@ with tab1:
         # Call API
         with st.chat_message("assistant"):
             with st.spinner("Orchestrating agents..."):
+                # Formatear el historial para enviarlo al backend
+                historial_str = ""
+                if len(st.session_state.messages) > 1:
+                    import json
+                    historial_str = json.dumps([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]])
+
                 payload = {
                     "pregunta": prompt,
+                    "historial": historial_str,
                     "disciplina": filtro_disciplina if filtro_disciplina else None,
                     "piso": filtro_piso if filtro_piso else None,
                     "edificio_id": "default"
@@ -284,11 +291,11 @@ with tab1:
                                 "confidence": data.get("confianza", 0),
                                 "sources": data.get("sources", []),
                                 "warnings": data.get("advertencias", []),
-                                "visualization": data.get("visualizacion", {})
+                                "visualization": data.get("visualizacion") or {}
                             }
                             
                             # Visualization
-                            if tech_data["visualization"].get("diagrama_mermaid"):
+                            if tech_data["visualization"] and tech_data["visualization"].get("diagrama_mermaid"):
                                 render_mermaid(tech_data["visualization"]["diagrama_mermaid"])
                             
                             # Save to history
