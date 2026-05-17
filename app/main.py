@@ -50,27 +50,27 @@ logger = logging.getLogger(__name__)  # Main application logger
 
 # ─── Global State ───
 vector_store: PlanoVectorStore = None
-planos_cargados: dict = {}
+loaded_blueprints: dict = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initializes and cleans up the application context."""
-    global vector_store, planos_cargados
+    global vector_store, loaded_blueprints
     logger.info("🚀 FacilityMind Backend starting...")
 
     # Initialize Vector Store
     vector_store = PlanoVectorStore(persist_path=CHROMA_PATH, collection=COLLECTION_NAME)
     logger.info(f"📦 VectorStore ready: {vector_store.contar_chunks()} existing chunks")
 
-    # Load persisted planos_cargados if exists
-    persisted_path = Path("data/processed/planos_cargados.json")
+    # Load persisted loaded_blueprints if exists
+    persisted_path = Path("data/processed/loaded_blueprints.json")
     if persisted_path.exists():
         try:
             import json
             with open(persisted_path, "r", encoding="utf-8") as f:
-                planos_cargados.update(json.load(f))
-            logger.info(f"📂 Loaded {len(planos_cargados)} persisted blueprints from disk")
+                loaded_blueprints.update(json.load(f))
+            logger.info(f"📂 Loaded {len(loaded_blueprints)} persisted blueprints from disk")
         except Exception as e:
             logger.warning(f"⚠️ Failed to load persisted blueprints: {e}")
 
@@ -173,15 +173,15 @@ def ejecutar_ocr_visual_background(pdf_path: str, plano_id: str, edificio_id: st
         doc.close()
         logger.info(f"[Background OCR] Finished! Visually processed {vision_pages_processed}/{total_pages} pages for {plano_id}.")
         
-        # Update planos_cargados metadata with the newly indexed chunks
-        global planos_cargados
-        if plano_id in planos_cargados:
-            planos_cargados[plano_id]["chunks_indexados"] = vector_store.collection.count()
+        # Update loaded_blueprints metadata with the newly indexed chunks
+        global loaded_blueprints
+        if plano_id in loaded_blueprints:
+            loaded_blueprints[plano_id]["chunks_indexados"] = vector_store.collection.count()
             # Persist update
             import json
-            persisted_path = Path("data/processed/planos_cargados.json")
+            persisted_path = Path("data/processed/loaded_blueprints.json")
             with open(persisted_path, "w", encoding="utf-8") as f:
-                json.dump(planos_cargados, f, indent=4)
+                json.dump(loaded_blueprints, f, indent=4)
                 
     except Exception as e:
         logger.error(f"[Background OCR] Critical error in background thread: {e}")
@@ -266,7 +266,7 @@ async def upload_plano(
             doc.close()
 
         # 5. Register loaded blueprint
-        planos_cargados[plano_id] = {
+        loaded_blueprints[plano_id] = {
             "plano_id": plano_id,
             "edificio_id": edificio_id,
             "tipo_plano": documentos[0]["metadata"]["tipo_plano"] if documentos else (tipo_plano if tipo_plano else "electrical"),
@@ -281,13 +281,13 @@ async def upload_plano(
         # Persist to disk so restarts don't lose the registered caches
         try:
             import json
-            persisted_path = Path("data/processed/planos_cargados.json")
+            persisted_path = Path("data/processed/loaded_blueprints.json")
             persisted_path.parent.mkdir(parents=True, exist_ok=True)
             with open(persisted_path, "w", encoding="utf-8") as f:
-                json.dump(planos_cargados, f, indent=4)
-            logger.info("[API] Successfully persisted planos_cargados to disk")
+                json.dump(loaded_blueprints, f, indent=4)
+            logger.info("[API] Successfully persisted loaded_blueprints to disk")
         except Exception as e:
-            logger.warning(f"⚠️ Failed to persist planos_cargados: {e}")
+            logger.warning(f"⚠️ Failed to persist loaded_blueprints: {e}")
 
         # 6. Launch Background Task to run Vision OCR on CAD drawing pages
         background_tasks.add_task(
@@ -302,7 +302,7 @@ async def upload_plano(
 
         return {
             "success": True,
-            "data": planos_cargados[plano_id]
+            "data": loaded_blueprints[plano_id]
         }
 
     except Exception as e:
@@ -322,7 +322,7 @@ async def listar_planos():
         "data": {
             "planos": planos,
             "total_chunks": vector_store.contar_chunks() if vector_store else 0,
-            "planos_detalle": [planos_cargados.get(p, {"plano_id": p}) for p in planos]
+            "planos_detalle": [loaded_blueprints.get(p, {"plano_id": p}) for p in planos]
         }
     }
 
@@ -337,7 +337,7 @@ async def eliminar_plano(plano_id: str):
 
     success = vector_store.delete_plano(plano_id)
     if success:
-        plano_info = planos_cargados.pop(plano_id, None)
+        plano_info = loaded_blueprints.pop(plano_id, None)
         if plano_info:
             from agents.cache_manager import delete_cache
             for cache_key in ["cache_name_reasoner", "cache_name_validator", "cache_name"]:
@@ -345,15 +345,15 @@ async def eliminar_plano(plano_id: str):
                 if cache_name:
                     delete_cache(cache_name)
         
-        # Persist modified planos_cargados to disk after deletion
+        # Persist modified loaded_blueprints to disk after deletion
         try:
             import json
-            persisted_path = Path("data/processed/planos_cargados.json")
+            persisted_path = Path("data/processed/loaded_blueprints.json")
             with open(persisted_path, "w", encoding="utf-8") as f:
-                json.dump(planos_cargados, f, indent=4)
-            logger.info(f"[API] Updated planos_cargados on disk after deleting {plano_id}")
+                json.dump(loaded_blueprints, f, indent=4)
+            logger.info(f"[API] Updated loaded_blueprints on disk after deleting {plano_id}")
         except Exception as e:
-            logger.warning(f"⚠️ Failed to update persisted planos_cargados: {e}")
+            logger.warning(f"⚠️ Failed to update persisted loaded_blueprints: {e}")
             
         return {"success": True, "message": f"Blueprint {plano_id} deleted"}
     else:
@@ -420,8 +420,8 @@ async def consulta(
             
             chat_context = f"Chat History:\n{historial}\n\n" if historial else ""
             plano_info = "No blueprints loaded."
-            if planos_cargados:
-                plano_info = f"Active blueprint: ID {list(planos_cargados.values())[-1].get('plano_id', 'Desconocido')}."
+            if loaded_blueprints:
+                plano_info = f"Active blueprint: ID {list(loaded_blueprints.values())[-1].get('plano_id', 'Desconocido')}."
                 
             prompt = f"You are the FacilityMind Orchestrator. {chat_context} The user says: '{pregunta}'. Respond in a friendly, concise, and helpful way (max 1 paragraph) in the user's language (Spanish). Current system state: {plano_info}."
             
@@ -475,8 +475,8 @@ async def consulta(
         # Retrieve active context cache for native long-context
         active_cache_reasoner = None
         active_cache_validator = None
-        if planos_cargados:
-            last_plano = list(planos_cargados.values())[-1]
+        if loaded_blueprints:
+            last_plano = list(loaded_blueprints.values())[-1]
             active_cache_reasoner = last_plano.get("cache_name_reasoner") or last_plano.get("cache_name")
             active_cache_validator = last_plano.get("cache_name_validator") or last_plano.get("cache_name")
 

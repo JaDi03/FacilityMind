@@ -45,6 +45,7 @@ Thumbs.db
 data/raw/*.pdf
 data/processed/chroma_db/
 data/processed/visualizaciones/
+data/processed/loaded_blueprints.json
 *.db
 *.sqlite
 *.sqlite3
