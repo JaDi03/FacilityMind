@@ -260,7 +260,7 @@ with st.sidebar:
         # Consultar saldos
         col_bal1, col_bal2 = st.columns(2)
         with col_bal1:
-            st.markdown(f"**EOA Balance:**<br/>`{st.session_state.client_wallet_balance:.4f} USDC`", unsafe_allow_html=True)
+            st.markdown(f"**WALLET BALANCE:**<br/>`{st.session_state.client_wallet_balance:.4f} USDC`", unsafe_allow_html=True)
         with col_bal2:
             st.markdown(f"**Gateway Balance:**<br/>`{st.session_state.client_gateway_balance:.4f} USDC`", unsafe_allow_html=True)
             
@@ -412,8 +412,13 @@ with tab1:
                         st.markdown(f'''
                         <div style="background-color:#f8f9fa; border-left: 5px solid #005571; padding:10px; margin:10px 0; border-radius:5px;">
                             <strong style="color:#005571; font-size:15px;">🪙 Nanopayment Processed (Web3 {bill['network']})</strong><br/>
-                            <span style="font-size:14px; color:#333;">Automatic offchain charge of <code>${bill['amount_charged']} {bill['currency']}</code> via EIP-3009.</span><br/>
-                            <span style="color:gray; font-size:12px;">Auth: <code>{bill.get('eip3009_auth', '...')}</code> | Batched Settlement: {bill.get('settlement_status', 'PENDING')}</span>
+                            <span style="font-size:14px; color:#333; display:inline-block; margin-top:5px; margin-bottom:5px;">
+                                Automatic offchain charge of <span style="background-color: #e8f0fe; color: #1a73e8; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-family: monospace;">${bill['amount_charged']} {bill['currency']}</span> via EIP-3009.
+                            </span><br/>
+                            <span style="color:#5f6368; font-size:12px;">
+                                Auth: <span style="background-color: #e6f4ea; color: #137333; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-family: monospace;">{bill.get('eip3009_auth', '...')}</span> | 
+                                Batched Settlement: <span style="background-color: #f1f3f4; color: #3c4043; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-family: monospace;">{bill.get('settlement_status', 'PENDING')}</span>
+                            </span>
                         </div>
                         ''', unsafe_allow_html=True)
 
@@ -513,8 +518,13 @@ with tab1:
                                 st.markdown(f'''
                                 <div style="background-color:#f8f9fa; border-left: 5px solid #005571; padding:10px; margin:10px 0; border-radius:5px;">
                                     <strong style="color:#005571; font-size:15px;">🪙 Nanopayment Processed (Web3 {bill['network']})</strong><br/>
-                                    <span style="font-size:14px; color:#333;">Automatic offchain charge of <code>${bill['amount_charged']} {bill['currency']}</code> via EIP-3009.</span><br/>
-                                    <span style="color:gray; font-size:12px;">Auth: <code>{bill.get('eip3009_auth', '...')}</code> | Batched Settlement: {bill.get('settlement_status', 'PENDING')}</span>
+                                    <span style="font-size:14px; color:#333; display:inline-block; margin-top:5px; margin-bottom:5px;">
+                                        Automatic offchain charge of <span style="background-color: #e8f0fe; color: #1a73e8; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-family: monospace;">${bill['amount_charged']} {bill['currency']}</span> via EIP-3009.
+                                    </span><br/>
+                                    <span style="color:#5f6368; font-size:12px;">
+                                        Auth: <span style="background-color: #e6f4ea; color: #137333; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-family: monospace;">{bill.get('eip3009_auth', '...')}</span> | 
+                                        Batched Settlement: <span style="background-color: #f1f3f4; color: #3c4043; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-family: monospace;">{bill.get('settlement_status', 'PENDING')}</span>
+                                    </span>
                                 </div>
                                 ''', unsafe_allow_html=True)
                             
