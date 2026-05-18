@@ -257,17 +257,40 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
         
-        # Consultar saldos
-        col_bal1, col_bal2 = st.columns(2)
-        with col_bal1:
-            st.markdown(f"**WALLET BALANCE:**<br/>`{st.session_state.client_wallet_balance:.4f} USDC`", unsafe_allow_html=True)
-        with col_bal2:
-            st.markdown(f"**Gateway Balance:**<br/>`{st.session_state.client_gateway_balance:.4f} USDC`", unsafe_allow_html=True)
+        # Consultar saldos - Beautiful Premium Crypto Card Design
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #101524 0%, #080a10 100%);
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid #30363d;
+            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.08);
+            margin-bottom: 15px;
+            color: white;
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 10px; font-weight: bold; color: #58a6ff; letter-spacing: 0.5px;">WALLET BALANCE</span>
+                <span style="font-size: 12px; color: #8b949e;">EOA</span>
+            </div>
+            <div style="font-size: 22px; font-weight: bold; color: #c9d1d9; font-family: monospace; margin-bottom: 12px;">
+                {st.session_state.client_wallet_balance:.4f} <span style="font-size: 12px; color: #58a6ff; font-weight: 500;">USDC</span>
+            </div>
+            <div style="border-top: 1px solid #30363d; padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 9px; color: #8b949e; font-weight: bold;">GATEWAY BALANCE</div>
+                    <div style="font-size: 15px; font-weight: bold; color: #56d364; font-family: monospace;">
+                        {st.session_state.client_gateway_balance:.4f} <span style="font-size: 10px; color: #8b949e;">USDC</span>
+                    </div>
+                </div>
+                <span style="font-size: 16px; color: #56d364;">⚡</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
             
-        col_ref, col_faucet = st.columns([1.2, 2])
+        col_ref, col_faucet = st.columns([1, 1])
         with col_ref:
-            if st.button("🔄 Refresh", key="ref_bal", use_container_width=True):
-                with st.spinner(""):
+            if st.button("🔄 Sync Balances", key="ref_bal", use_container_width=True):
+                with st.spinner("Syncing..."):
                     try:
                         resp = requests.get(f"{API_BASE}/api/v1/billing/balance/{st.session_state.client_wallet_id}", timeout=10)
                         if resp.status_code == 200 and resp.json().get("success"):
@@ -275,7 +298,7 @@ with st.sidebar:
                             st.session_state.client_gateway_balance = resp.json()["data"].get("gateway_balance", 0.0)
                             st.rerun()
                     except Exception as e:
-                        st.error(f"{e}")
+                        st.error(f"Sync error: {e}")
         with col_faucet:
             st.markdown(f"""
             <a href="https://faucet.circle.com" target="_blank" style="text-decoration:none;">
@@ -289,28 +312,43 @@ with st.sidebar:
         st.caption("USDC inside the Gateway enables zero-gas EIP-3009 batched settlements.")
         
         dep_amount = st.number_input("USDC to Deposit", min_value=0.1, max_value=100.0, value=1.0, step=0.5, key="dep_amount_val", label_visibility="collapsed")
-        if st.button("Deposit into Gateway", key="exec_deposit", type="primary", use_container_width=True):
-            if dep_amount > st.session_state.client_wallet_balance:
-                st.error("Insufficient EOA Balance.")
-            else:
-                with st.spinner("Executing secure onchain deposit... (15-20s)"):
+        
+        col_dep, col_disc = st.columns([1.2, 1])
+        with col_dep:
+            if st.button("Deposit to Gateway", key="exec_deposit", type="primary", use_container_width=True):
+                if dep_amount > st.session_state.client_wallet_balance:
+                    st.error("Insufficient Balance.")
+                else:
+                    with st.spinner("Depositing... (15s)"):
+                        try:
+                            resp = requests.post(f"{API_BASE}/api/v1/billing/gateway-deposit", json={
+                                "wallet_id": st.session_state.client_wallet_id,
+                                "amount": dep_amount
+                            }, timeout=45)
+                            if resp.status_code == 200 and resp.json().get("success"):
+                                st.success(f"Deposited {dep_amount} USDC!")
+                                # Refresh balances
+                                resp_bal = requests.get(f"{API_BASE}/api/v1/billing/balance/{st.session_state.client_wallet_id}", timeout=10)
+                                if resp_bal.status_code == 200 and resp_bal.json().get("success"):
+                                    st.session_state.client_wallet_balance = resp_bal.json()["data"]["balance"]
+                                    st.session_state.client_gateway_balance = resp_bal.json()["data"].get("gateway_balance", 0.0)
+                                st.rerun()
+                            else:
+                                st.error(f"Failed: {resp.json().get('error', 'Unknown')}")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+        with col_disc:
+            if st.button("🔌 Reset Wallet", key="reset_wallet_btn", type="secondary", use_container_width=True):
+                if os.path.exists(CACHE_FILE):
                     try:
-                        resp = requests.post(f"{API_BASE}/api/v1/billing/gateway-deposit", json={
-                            "wallet_id": st.session_state.client_wallet_id,
-                            "amount": dep_amount
-                        }, timeout=45)
-                        if resp.status_code == 200 and resp.json().get("success"):
-                            st.success(f"Deposited {dep_amount} USDC!")
-                            # Refresh balances
-                            resp_bal = requests.get(f"{API_BASE}/api/v1/billing/balance/{st.session_state.client_wallet_id}", timeout=10)
-                            if resp_bal.status_code == 200 and resp_bal.json().get("success"):
-                                st.session_state.client_wallet_balance = resp_bal.json()["data"]["balance"]
-                                st.session_state.client_gateway_balance = resp_bal.json()["data"].get("gateway_balance", 0.0)
-                            st.rerun()
-                        else:
-                            st.error(f"Failed: {resp.json().get('error', 'Unknown error')}")
-                    except Exception as e:
-                        st.error(f"Network error: {e}")
+                        os.remove(CACHE_FILE)
+                    except Exception:
+                        pass
+                st.session_state.client_wallet_id = None
+                st.session_state.client_wallet_address = None
+                st.session_state.client_wallet_balance = 0.0
+                st.session_state.client_gateway_balance = 0.0
+                st.rerun()
 
     st.divider()
     
