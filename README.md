@@ -9,6 +9,8 @@
 ![Gemini Embeddings](https://img.shields.io/badge/Gemini%20Embeddings-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-FC6D26?style=for-the-badge&logo=database&logoColor=white)
 ![Lobster Trap](https://img.shields.io/badge/Lobster%20Trap-DPI%20Security-red?style=for-the-badge&logo=shield&logoColor=white)
+![Circle x402](https://img.shields.io/badge/Circle%20x402-Nanopayments-3B82F6?style=for-the-badge&logo=circle&logoColor=white)
+![USDC](https://img.shields.io/badge/USDC-Gas--Free-2775CA?style=for-the-badge&logo=usdc&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 </div>
@@ -24,6 +26,7 @@
 - [Technical Stack](#-technical-stack)
 - [Installation & Deployment](#-installation--deployment)
 - [Blueprint Ingestion](#️-blueprint-ingestion)
+- [Business Model & Payments](#-business-model--payments-x402-utility-tokenomics)
 - [Supported Safety Standards](#-supported-safety-standards)
 - [License](#-license)
 
@@ -219,6 +222,42 @@ The [Lobster Trap](https://github.com/veea-io/lobstertrap) Go binary performs de
 The Lobster Trap proxy runs as a local HTTP server on port `8080` and exposes a live monitoring dashboard:
 ```
 http://127.0.0.1:8080/_lobstertrap/
+```
+
+
+---
+
+## 🪙 Business Model & Payments (x402 Utility Tokenomics)
+
+FacilityMind implements an innovative **Pay-per-Token Utility Billing Model** with a **cost-plus margin commission** on every AI inference query, enabled exclusively by the **Circle x402 Nanopayments** protocol:
+
+### 📈 Cost-Plus Pricing Model
+1. **Precise Utility Metering:** For every blueprint or safety query, the system calculates the exact number of input tokens (query + retrieved RAG context) and output tokens (AI agent response).
+2. **Base Inference Cost:** We baseline pricing on native Google Gemini API rates (e.g., Gemini 2.5 Pro: $1.25/M input tokens, $5.00/M output tokens).
+3. **100% Platform Markup (Margin Commission):** We apply a `MARGIN_MULTIPLIER = 2.0`, charging the user twice the baseline inference cost. 
+   - *Example:* If a technical query costs $0.0005 USD base on Gemini, the platform charges the client **$0.0010 USDC**.
+   - The **additional $0.0005 USDC represents 100% pure profit margin** for the FacilityMind platform.
+
+### ⚡ Why Circle x402 is the Only Viable Solution
+- **The Legacy Payment Failure (Stripe/Visa):** Traditional payment processors charge a flat rate of `$0.30 USD + 2.9%` per transaction. Charging a technician $0.001 USD per query using a credit card is mathematically impossible.
+- **The Gas Fee Bottleneck:** Processing standard on-chain transactions for each query on traditional blockchains would incur gas fees exceeding the cost of the query by 10x to 100x.
+- **The Circle x402 Solution:** By depositing USDC into the Gateway Wallet contract, technicians authorize off-chain payments using EIP-3009 signatures. Circle Gateway aggregates thousands of payments into a single net-settled batch, **eliminating per-query gas fees** and enabling economic, sub-cent microtransactions down to $0.000001 USDC.
+
+### 🔄 HTTP 402 Sequence Handshake Flow
+The diagram below represents the exact HTTP 402 negotiation flow implemented in FacilityMind:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Technician (Buyer)
+    actor Server as FacilityMind (Seller)
+
+    Client->>Server: 1. Ask blueprint query (GET /api/chat)
+    Server-->>Client: 2. 402 Payment Required + PAYMENT-REQUIRED header
+    Note over Client: Circle W3S signs EIP-3009 payment payload
+    Client->>Server: 3. Retry query with PAYMENT-SIGNATURE header
+    Note over Server: Server settles signature via Circle Gateway Settle API
+    Server-->>Client: 4. 200 OK + AI Blueprint Answer + PAYMENT-RESPONSE header
 ```
 
 ---

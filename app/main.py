@@ -745,13 +745,38 @@ async def api_create_wallet():
 
 @app.get("/api/v1/billing/balance/{wallet_id}")
 async def api_get_balance(wallet_id: str):
-    """Fetches real-time USDC blockchain token balance for a specific wallet."""
+    """Fetches real-time USDC blockchain token balance and Gateway contract balance for a specific wallet."""
     from app.nanopayments import X402NanopaymentGateway
     try:
         balance = X402NanopaymentGateway.get_wallet_balance(wallet_id)
-        return {"success": True, "data": {"balance": balance}}
+        address = X402NanopaymentGateway.get_wallet_address(wallet_id)
+        gateway_balance = X402NanopaymentGateway.get_gateway_balance(address) if address else 0.0
+        return {
+            "success": True, 
+            "data": {
+                "balance": balance,
+                "address": address,
+                "gateway_balance": gateway_balance
+            }
+        }
     except Exception as e:
         logger.error(f"[API Billing] Error getting balance: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/v1/billing/gateway-deposit")
+async def api_gateway_deposit(payload: dict):
+    """Triggers an onchain deposit of USDC into the Gateway Wallet contract for gasless nanopayments."""
+    from app.nanopayments import X402NanopaymentGateway
+    try:
+        wallet_id = payload.get("wallet_id")
+        amount = float(payload.get("amount", 0.0))
+        if not wallet_id or amount <= 0:
+            return {"success": False, "error": "Invalid wallet ID or deposit amount."}
+        
+        result = X402NanopaymentGateway.deposit_to_gateway(wallet_id, amount)
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.error(f"[API Billing] Error executing Gateway deposit: {e}")
         return {"success": False, "error": str(e)}
 
 

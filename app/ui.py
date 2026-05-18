@@ -158,22 +158,55 @@ def upload_blueprint(file, blueprint_id=None, blueprint_type=None):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+# ─── Local Wallet Cache Helper ───
+CACHE_FILE = "data/active_wallet.json"
+
+def load_cached_wallet():
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
+
+def save_cached_wallet(wallet_id, address):
+    os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+    try:
+        with open(CACHE_FILE, "w") as f:
+            json.dump({"wallet_id": wallet_id, "address": address}, f)
+    except Exception:
+        pass
+
 # ─── Session State ───
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+cached_wallet = load_cached_wallet()
 if "client_wallet_id" not in st.session_state:
-    st.session_state.client_wallet_id = None
+    st.session_state.client_wallet_id = cached_wallet["wallet_id"] if cached_wallet else None
 if "client_wallet_address" not in st.session_state:
-    st.session_state.client_wallet_address = None
+    st.session_state.client_wallet_address = cached_wallet["address"] if cached_wallet else None
 if "client_wallet_balance" not in st.session_state:
     st.session_state.client_wallet_balance = 0.0
+if "client_gateway_balance" not in st.session_state:
+    st.session_state.client_gateway_balance = 0.0
+    # Try to load cached wallet's actual balances on startup
+    if st.session_state.client_wallet_id:
+        try:
+            resp = requests.get(f"{API_BASE}/api/v1/billing/balance/{st.session_state.client_wallet_id}", timeout=10)
+            if resp.status_code == 200 and resp.json().get("success"):
+                st.session_state.client_wallet_balance = resp.json()["data"]["balance"]
+                st.session_state.client_gateway_balance = resp.json()["data"].get("gateway_balance", 0.0)
+        except Exception:
+            pass
 
 # ─── Sidebar ───
 with st.sidebar:
     # Use columns to center the logo
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        st.image("app/assets/logo.png", use_container_width=True)
+        st.image("app/assets/logo.png", width="stretch")
         
     st.markdown("<h1 style='text-align: center; margin-top: -15px;'>FacilityMind</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray;'>Professional Facility Management AI</p>", unsafe_allow_html=True)
@@ -197,55 +230,87 @@ with st.sidebar:
     st.divider()
     
     st.markdown("<h3 style='margin-bottom:0;'>🪙 Web3 Billing & Wallet</h3>", unsafe_allow_html=True)
-    st.caption("Autosuficiencia y cobros por uso real bajo el protocolo x402 de Circle.")
+    st.caption("Self-sufficiency and pay-as-you-go usage under Circle's x402 protocol.")
     
     if not st.session_state.client_wallet_id:
-        if st.button("⚡ Generar Wallet de Consultas", type="primary", use_container_width=True):
-            with st.spinner("Creando wallet programable real en Circle..."):
+        if st.button("⚡ Generate Query Wallet", type="primary", width="stretch"):
+            with st.spinner("Creating real programmable wallet on Circle..."):
                 try:
-                    resp = requests.post("http://localhost:8080/api/v1/billing/create-wallet", timeout=30)
+                    resp = requests.post(f"{API_BASE}/api/v1/billing/create-wallet", timeout=30)
                     if resp.status_code == 200 and resp.json().get("success"):
                         wdata = resp.json()["data"]
                         st.session_state.client_wallet_id = wdata["wallet_id"]
                         st.session_state.client_wallet_address = wdata["address"]
-                        st.success("¡Wallet Creada con Éxito!")
+                        save_cached_wallet(wdata["wallet_id"], wdata["address"])
+                        st.success("Wallet Created Successfully!")
                         st.rerun()
                     else:
-                        st.error(f"Fallo al crear wallet: {resp.json().get('error', 'Desconocido')}")
+                        st.error(f"Failed to create wallet: {resp.json().get('error', 'Unknown')}")
                 except Exception as e:
-                    st.error(f"Error de red: {e}")
+                    st.error(f"Network error: {e}")
     else:
         # Mostrar detalles de la Wallet
         st.markdown(f"""
         <div style="background-color:#0e1117; padding:10px; border-radius:5px; border:1px solid #30363d; margin-bottom:10px;">
-            <span style="font-size:10px; color:gray; font-weight:bold;">DIRECCIÓN DE PAGO (AVAX FUJI)</span><br/>
+            <span style="font-size:10px; color:gray; font-weight:bold;">PAYMENT ADDRESS (ARC TESTNET)</span><br/>
             <code style="font-size:11px; color:#58a6ff; word-break:break-all;">{st.session_state.client_wallet_address}</code>
         </div>
         """, unsafe_allow_html=True)
         
-        # Consultar saldo
-        col_bal, col_ref = st.columns([3, 1])
-        with col_bal:
-            st.markdown(f"**Saldo:** `{st.session_state.client_wallet_balance:.4f} USDC`")
+        # Consultar saldos
+        col_bal1, col_bal2 = st.columns(2)
+        with col_bal1:
+            st.markdown(f"**EOA Balance:**<br/>`{st.session_state.client_wallet_balance:.4f} USDC`", unsafe_allow_html=True)
+        with col_bal2:
+            st.markdown(f"**Gateway Balance:**<br/>`{st.session_state.client_gateway_balance:.4f} USDC`", unsafe_allow_html=True)
+            
+        col_ref, col_faucet = st.columns([1.2, 2])
         with col_ref:
-            if st.button("🔄", key="ref_bal", use_container_width=True):
+            if st.button("🔄 Refresh", key="ref_bal", use_container_width=True):
                 with st.spinner(""):
                     try:
-                        resp = requests.get(f"http://localhost:8080/api/v1/billing/balance/{st.session_state.client_wallet_id}", timeout=10)
+                        resp = requests.get(f"{API_BASE}/api/v1/billing/balance/{st.session_state.client_wallet_id}", timeout=10)
                         if resp.status_code == 200 and resp.json().get("success"):
                             st.session_state.client_wallet_balance = resp.json()["data"]["balance"]
+                            st.session_state.client_gateway_balance = resp.json()["data"].get("gateway_balance", 0.0)
                             st.rerun()
                     except Exception as e:
                         st.error(f"{e}")
-                        
-        # Enlace al Faucet
-        st.markdown(f"""
-        <a href="https://faucet.circle.com" target="_blank" style="text-decoration:none;">
-            <button style="width:100%; border:1px solid #30363d; background-color:#161b22; color:#58a6ff; padding:5px; border-radius:5px; cursor:pointer;">
-                🚰 Ir al Faucet a Recargar USDC
-            </button>
-        </a>
-        """, unsafe_allow_html=True)
+        with col_faucet:
+            st.markdown(f"""
+            <a href="https://faucet.circle.com" target="_blank" style="text-decoration:none;">
+                <button style="width:100%; border:1px solid #30363d; background-color:#161b22; color:#58a6ff; padding:5px; border-radius:5px; cursor:pointer; height:38px; font-size:12px; font-weight:bold;">
+                    🚰 Circle Faucet
+                </button>
+            </a>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("<h4 style='margin-top:15px; margin-bottom:5px; font-size:13px; color:#58a6ff; font-weight:bold;'>⚡ Deposit to Gateway (Gas-Free)</h4>", unsafe_allow_html=True)
+        st.caption("USDC inside the Gateway enables zero-gas EIP-3009 batched settlements.")
+        
+        dep_amount = st.number_input("USDC to Deposit", min_value=0.1, max_value=100.0, value=1.0, step=0.5, key="dep_amount_val", label_visibility="collapsed")
+        if st.button("Deposit into Gateway", key="exec_deposit", type="primary", use_container_width=True):
+            if dep_amount > st.session_state.client_wallet_balance:
+                st.error("Insufficient EOA Balance.")
+            else:
+                with st.spinner("Executing secure onchain deposit... (15-20s)"):
+                    try:
+                        resp = requests.post(f"{API_BASE}/api/v1/billing/gateway-deposit", json={
+                            "wallet_id": st.session_state.client_wallet_id,
+                            "amount": dep_amount
+                        }, timeout=45)
+                        if resp.status_code == 200 and resp.json().get("success"):
+                            st.success(f"Deposited {dep_amount} USDC!")
+                            # Refresh balances
+                            resp_bal = requests.get(f"{API_BASE}/api/v1/billing/balance/{st.session_state.client_wallet_id}", timeout=10)
+                            if resp_bal.status_code == 200 and resp_bal.json().get("success"):
+                                st.session_state.client_wallet_balance = resp_bal.json()["data"]["balance"]
+                                st.session_state.client_gateway_balance = resp_bal.json()["data"].get("gateway_balance", 0.0)
+                            st.rerun()
+                        else:
+                            st.error(f"Failed: {resp.json().get('error', 'Unknown error')}")
+                    except Exception as e:
+                        st.error(f"Network error: {e}")
 
     st.divider()
     
@@ -260,7 +325,7 @@ with st.sidebar:
                 st.caption(f"Pages: {bp.get('total_pages', '?')}")
                 
                 # Delete Button
-                if st.button(f"🗑️ Delete {bp['blueprint_id']}", key=f"del_{bp['blueprint_id']}", type="secondary", use_container_width=True):
+                if st.button(f"🗑️ Delete {bp['blueprint_id']}", key=f"del_{bp['blueprint_id']}", type="secondary", width="stretch"):
                     with st.spinner("Deleting blueprint..."):
                         resp = requests.delete(f"{API_BLUEPRINTS}/{bp['blueprint_id']}", timeout=10)
                         if resp.status_code == 200:
@@ -280,7 +345,7 @@ with st.sidebar:
         with col2:
             blueprint_type = st.selectbox("Type", ["", "electrical", "plumbing", "architectural", "structural", "hvac", "fire_protection", "general"])
 
-        if st.button("📤 Upload Blueprint", use_container_width=True) and uploaded_pdf:
+        if st.button("📤 Upload Blueprint", width="stretch") and uploaded_pdf:
             with st.spinner("Processing blueprint..."):
                 result = upload_blueprint(uploaded_pdf, blueprint_id or None, blueprint_type or None)
                 if result.get("success"):
@@ -339,15 +404,15 @@ with tab1:
                             if viz.get("visual_summary"):
                                 st.caption(f"**Description:** {viz['visual_summary']}")
                             if viz.get("generated_image") and os.path.exists(viz["generated_image"]):
-                                st.image(viz["generated_image"], use_container_width=True)
+                                st.image(viz["generated_image"], width="stretch")
                                 
                     # Billing Receipt (History)
                     if tech.get("billing"):
                         bill = tech["billing"]
                         st.markdown(f'''
                         <div style="background-color:#f8f9fa; border-left: 5px solid #005571; padding:10px; margin:10px 0; border-radius:5px;">
-                            <strong style="color:#005571; font-size:15px;">🪙 Nanopago Procesado (Web3 {bill['network']})</strong><br/>
-                            <span style="font-size:14px; color:#333;">Cobro automático offchain de <code>${bill['amount_charged']} {bill['currency']}</code> via EIP-3009.</span><br/>
+                            <strong style="color:#005571; font-size:15px;">🪙 Nanopayment Processed (Web3 {bill['network']})</strong><br/>
+                            <span style="font-size:14px; color:#333;">Automatic offchain charge of <code>${bill['amount_charged']} {bill['currency']}</code> via EIP-3009.</span><br/>
                             <span style="color:gray; font-size:12px;">Auth: <code>{bill.get('eip3009_auth', '...')}</code> | Batched Settlement: {bill.get('settlement_status', 'PENDING')}</span>
                         </div>
                         ''', unsafe_allow_html=True)
@@ -374,12 +439,12 @@ with tab1:
             
     send_media_clicked = False
     if audio_input or photo_input:
-        send_media_clicked = st.button("📤 Enviar Audio/Foto", use_container_width=True)
+        send_media_clicked = st.button("📤 Send Audio/Photo", width="stretch")
 
     prompt_text = st.chat_input("Ask about the building infrastructure... (e.g., 'Which breaker controls unit 1402?')")
 
     if prompt_text or send_media_clicked:
-        final_prompt = prompt_text if prompt_text else "Analiza este archivo multimedia."
+        final_prompt = prompt_text if prompt_text else "Analyze this media file."
         
         # Display user message
         st.session_state.messages.append({"role": "user", "content": final_prompt})
@@ -447,8 +512,8 @@ with tab1:
                                 bill = tech_data["billing"]
                                 st.markdown(f'''
                                 <div style="background-color:#f8f9fa; border-left: 5px solid #005571; padding:10px; margin:10px 0; border-radius:5px;">
-                                    <strong style="color:#005571; font-size:15px;">🪙 Nanopago Procesado (Web3 {bill['network']})</strong><br/>
-                                    <span style="font-size:14px; color:#333;">Cobro automático offchain de <code>${bill['amount_charged']} {bill['currency']}</code> via EIP-3009.</span><br/>
+                                    <strong style="color:#005571; font-size:15px;">🪙 Nanopayment Processed (Web3 {bill['network']})</strong><br/>
+                                    <span style="font-size:14px; color:#333;">Automatic offchain charge of <code>${bill['amount_charged']} {bill['currency']}</code> via EIP-3009.</span><br/>
                                     <span style="color:gray; font-size:12px;">Auth: <code>{bill.get('eip3009_auth', '...')}</code> | Batched Settlement: {bill.get('settlement_status', 'PENDING')}</span>
                                 </div>
                                 ''', unsafe_allow_html=True)
