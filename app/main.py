@@ -41,9 +41,48 @@ from agents.validator import agente_validador
 from agents.visualizer import agente_visualizador
 
 # Logging
+class ColoredFormatter(logging.Formatter):
+    # ANSI escape codes for coloring
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    
+    COLORS = {
+        "[Security]": "\033[91m",       # Light Red
+        "[Perception]": "\033[96m",     # Light Cyan
+        "[Reasoner]": "\033[95m",       # Light Magenta
+        "[Validator]": "\033[92m",      # Light Green
+        "[Visualizer]": "\033[93m",     # Light Yellow
+        "[x402 REAL]": "\033[94m",      # Light Blue
+        "[API]": "\033[97m",            # White
+        "[Pipeline]": "\033[1;93m",     # Bold Yellow
+    }
+
+    def format(self, record):
+        message = super().format(record)
+        # Highlight tags
+        for tag, color in self.COLORS.items():
+            if tag in message:
+                message = message.replace(tag, f"{self.BOLD}{color}{tag}{self.RESET}")
+        
+        # Highlight security denials and rejections in bright bold red
+        if "DENIED" in message:
+            message = message.replace("DENIED", f"\033[1;91m🛑 DENIED\033[0m")
+        if "Validation rejected" in message:
+            message = message.replace("Validation rejected", f"\033[1;91m🛑 Validation rejected\033[0m")
+        if "approved=False" in message:
+            message = message.replace("approved=False", f"\033[1;91mapproved=False\033[0m")
+        if "requires_supervisor=True" in message:
+            message = message.replace("requires_supervisor=True", f"\033[1;91mrequires_supervisor=True\033[0m")
+            
+        return message
+
+# Configure standard console output with our ColoredFormatter
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(ColoredFormatter("%(asctime)s | %(name)s | %(levelname)s | %(message)s"))
+
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
-    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+    handlers=[handler]
 )
 logger = logging.getLogger(__name__)  # Main application logger
 
