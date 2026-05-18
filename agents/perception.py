@@ -11,15 +11,13 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from config import GEMINI_API_KEY, GeminiModels
 from models.schemas import PerceptionOutput
 
 logger = logging.getLogger(__name__)
-
-# Configure Gemini
-genai.configure(api_key=GEMINI_API_KEY)
 
 # Load system prompt
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "perception.txt"
@@ -35,19 +33,11 @@ async def agente_percepcion(
     text: str = ""
 ) -> PerceptionOutput:
     """
-    Perception Agent: Processes multimodal inputs from the technician.
-
-    Args:
-        audio_path: Path to the audio file (ogg, mp3, wav).
-        photo_path: Path to the image file (jpg, png).
-        text: Additional text or manual transcription.
-
-    Returns:
-        PerceptionOutput containing structured query data.
+    Perception Agent: Processes multimodal inputs from the technician using Google GenAI SDK v2.
     """
     logger.info(f"[Perception] Starting analysis | audio={audio_path is not None}, photo={photo_path is not None}, text={bool(text)}")
 
-    model = genai.GenerativeModel(MODEL, system_instruction=SYSTEM_PROMPT)
+    v2_client = genai.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
     parts = []
 
     # --- Audio Input ---
@@ -61,7 +51,7 @@ async def agente_percepcion(
                 mime = "audio/mpeg"
             elif audio_path.endswith(".wav"):
                 mime = "audio/wav"
-            parts.append({"mime_type": mime, "data": audio_bytes})
+            parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=mime))
             logger.info(f"[Perception] Audio loaded: {len(audio_bytes)} bytes ({mime})")
         except Exception as e:
             logger.error(f"[Perception] Error loading audio: {e}")
@@ -74,7 +64,7 @@ async def agente_percepcion(
             mime = "image/jpeg"
             if photo_path.endswith(".png"):
                 mime = "image/png"
-            parts.append({"mime_type": mime, "data": img_bytes})
+            parts.append(types.Part.from_bytes(data=img_bytes, mime_type=mime))
             logger.info(f"[Perception] Image loaded: {len(img_bytes)} bytes ({mime})")
         except Exception as e:
             logger.error(f"[Perception] Error loading image: {e}")
@@ -91,7 +81,14 @@ If an image is provided, describe the visible object with technical precision.
 
     # --- Gemini Model Execution ---
     try:
-        response = await model.generate_content_async(parts)
+        response = await v2_client.aio.models.generate_content(
+            model=MODEL,
+            contents=parts,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.1
+            )
+        )
         raw = response.text
 
         # Clean potential markdown formatting

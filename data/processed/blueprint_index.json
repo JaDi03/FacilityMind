@@ -1,0 +1,590 @@
+{
+  "total_pages": 32,
+  "pages": [
+    {
+      "page_num": 1,
+      "sheet_no": "A001",
+      "units": [
+        "RETAIL",
+        "RESIDENTIAL"
+      ],
+      "circuits": [],
+      "rooms": [
+        "RETAIL AREA",
+        "RESIDENTIAL AREA"
+      ],
+      "panels": [],
+      "content_summary": "This is a cover sheet for the Trinity Wilds - Mixed Use project, including governing codes, a location map, project data (occupancy, construction type, height/area limitations, fire protection, occupant load, required fixtures, means of egress), and a comprehensive drawing index for General, Architectural, Mechanical, and Electrical sheets."
+    },
+    {
+      "page_num": 2,
+      "sheet_no": "A002",
+      "units": [],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page provides general notes, a comprehensive list of abbreviations used throughout the blueprints, and typical ADA (Americans with Disabilities Act) details, including diagrams for wheelchair accessible toilet compartments, urinal heights, turning spaces, clear floor/ground space, maneuvering clearances, side reach, vertical clearance, knee clearance, and dispenser outlet locations. It also includes a symbol legend for architectural elements."
+    },
+    {
+      "page_num": 3,
+      "sheet_no": "A003",
+      "units": [],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page details ADA standards for stairs and handrails, referencing the 2012 Edition NFPA 101 and 2010 ADA Standards. It includes diagrams for stair dimensions, handrail returns, and non-circular cross sections, along with a table specifying minimum widths, maximum riser heights, minimum tread depths, minimum headroom, and maximum height between landings for new stairs."
+    },
+    {
+      "page_num": 4,
+      "sheet_no": "A004",
+      "units": [],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page presents a 3D view of the rear elevation of the Trinity Wilds - Mixed Use building, providing a visual representation of the architectural design."
+    },
+    {
+      "page_num": 5,
+      "sheet_no": "A005",
+      "units": [],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page outlines the submittals and shop drawings required for the project, along with a detailed responsibility matrix. The matrix specifies which party (Tenant, GC, Architect, OSV, Landlord) is responsible for furnishing, coordinating, and installing various elements across different scopes, including general requirements, architectural, mechanical, plumbing, electrical, communication, low voltage, masonry, metals, wood and plastic, thermal and moisture protection, doors and windows, and finishes. General notes regarding coordination and material provision are also included."
+    },
+    {
+      "page_num": 6,
+      "sheet_no": "A101",
+      "units": [
+        "RETAIL 1",
+        "RETAIL 2",
+        "RETAIL 3",
+        "RETAIL 4",
+        "RETAIL 5",
+        "RETAIL 6",
+        "RETAIL 7"
+      ],
+      "circuits": [],
+      "rooms": [
+        "RETAIL 1",
+        "RETAIL 2",
+        "RETAIL 3",
+        "RETAIL 4",
+        "RETAIL 5",
+        "RETAIL 6",
+        "RETAIL 7"
+      ],
+      "panels": [
+        "PANEL B"
+      ],
+      "content_summary": "This page displays the Main Level Floor Plan for the Trinity Wilds - Mixed Use project, featuring seven distinct retail units (RETAIL 1 through RETAIL 7). Each retail unit is labeled with its square footage, and multiple \"PANEL B\" locations are indicated. Notes regarding air handler run lines from roof units are also present."
+    },
+    {
+      "page_num": 7,
+      "sheet_no": "A102",
+      "units": [
+        "UNIT A - 2",
+        "UNIT B - 2",
+        "UNIT C - 1",
+        "UNIT D - 1",
+        "UNIT E - 2",
+        "UNIT F - 1",
+        "UNIT G - 1"
+      ],
+      "circuits": [],
+      "rooms": [
+        "BEDROOM"
+      ],
+      "panels": [],
+      "content_summary": "This page contains the 2nd, 3rd, and 4th Level Floor Plan, showing the layouts for various residential units (Unit A-2, Unit B-2, Unit C-1, Unit D-1, Unit E-2, Unit F-1, Unit G-1), each with a specified bedroom area. Below this, a Roof Plan is provided, indicating the overall roof layout without specific details."
+    },
+    {
+      "page_num": 8,
+      "sheet_no": "A103",
+      "units": [
+        "UNIT A - 2"
+      ],
+      "circuits": [],
+      "rooms": [
+        "KITCHEN",
+        "BEDROOM",
+        "BATHROOM"
+      ],
+      "panels": [
+        "ELEC. PANEL"
+      ],
+      "content_summary": "This page provides an enlarged floor plan for Unit A, specifically Unit A-2, detailing its layout including a bedroom, kitchen, and bathroom. It also includes detailed kitchen elevations (UNIT A KITCHEN 1, UNIT A KITCHEN 2), a 3D view of the kitchen, and a bathroom plan (UNIT A BATHROOM). An \"ELEC. PANEL\" is indicated within the unit."
+    },
+    {
+      "page_num": 9,
+      "sheet_no": "A104",
+      "units": [
+        "UNIT B"
+      ],
+      "circuits": [],
+      "rooms": [
+        "KITCHEN",
+        "BATHROOM 1",
+        "BATHROOM 2"
+      ],
+      "panels": [
+        "ELEC. PANEL"
+      ],
+      "content_summary": "This page presents an enlarged floor plan for Unit B, detailing its layout including kitchen and two bathrooms. It also includes detailed kitchen elevations (UNIT B KITCHEN 1, UNIT B KITCHEN 2), a 3D view of the kitchen, and two separate bathroom plans (UNIT B BATHROOM 1, UNIT B BATHROOM 2). An \"ELEC. PANEL\" is indicated within the unit."
+    },
+    {
+      "page_num": 10,
+      "sheet_no": "A105",
+      "units": [
+        "UNIT C - 1"
+      ],
+      "circuits": [],
+      "rooms": [
+        "KITCHEN",
+        "BEDROOM",
+        "BATHROOM"
+      ],
+      "panels": [
+        "ELEC. PANEL"
+      ],
+      "content_summary": "This page provides an enlarged floor plan for Unit C, specifically Unit C-1, detailing its layout including a bedroom, kitchen, and bathroom. It also includes detailed kitchen elevations (UNIT C KITCHEN 1, UNIT C KITCHEN 2), a 3D view of the kitchen, and a bathroom plan (UNIT C BATHROOM). An \"ELEC. PANEL\" is indicated within the unit."
+    },
+    {
+      "page_num": 11,
+      "sheet_no": "A106",
+      "units": [
+        "UNIT D - 1"
+      ],
+      "circuits": [],
+      "rooms": [
+        "KITCHEN",
+        "BEDROOM",
+        "BATHROOM"
+      ],
+      "panels": [
+        "ELEC. PANEL"
+      ],
+      "content_summary": "This page presents an enlarged floor plan for Unit D, specifically Unit D-1, detailing its layout including a bedroom, kitchen, and bathroom. It also includes detailed kitchen elevations (UNIT D KITCHEN 1, UNIT D KITCHEN 2), a 3D view of the kitchen, and a bathroom plan (UNIT D BATHROOM). An \"ELEC. PANEL\" is indicated within the unit."
+    },
+    {
+      "page_num": 12,
+      "sheet_no": "A107",
+      "units": [
+        "UNIT E"
+      ],
+      "circuits": [],
+      "rooms": [
+        "KITCHEN",
+        "BATHROOM 1",
+        "BATHROOM 2",
+        "BATHROOM 3"
+      ],
+      "panels": [
+        "ELEC. PANEL"
+      ],
+      "content_summary": "This page provides an enlarged floor plan for Unit E, detailing its layout including a kitchen and three bathrooms. It also includes detailed kitchen elevations (UNIT E KITCHEN 1, UNIT E KITCHEN 2), a 3D view of the kitchen, and three separate bathroom plans (UNIT E BATHROOM 1, UNIT E BATHROOM 2, UNIT E BATHROOM 3). An \"ELEC. PANEL\" is indicated within the unit."
+    },
+    {
+      "page_num": 13,
+      "sheet_no": "A108",
+      "units": [
+        "UNIT F - 1"
+      ],
+      "circuits": [],
+      "rooms": [
+        "KITCHEN",
+        "BEDROOM",
+        "BATHROOM"
+      ],
+      "panels": [
+        "ELEC. PANEL"
+      ],
+      "content_summary": "This page presents an enlarged floor plan for Unit F, specifically Unit F-1, detailing its layout including a bedroom, kitchen, and bathroom. It also includes detailed kitchen elevations (UNIT F KITCHEN 1, UNIT F KITCHEN 2), a 3D view of the kitchen, and a bathroom plan (UNIT F BATHROOM). An \"ELEC. PANEL\" is indicated within the unit."
+    },
+    {
+      "page_num": 14,
+      "sheet_no": "A109",
+      "units": [
+        "UNIT G - 1"
+      ],
+      "circuits": [],
+      "rooms": [
+        "KITCHEN",
+        "BEDROOM",
+        "BATHROOM"
+      ],
+      "panels": [
+        "ELEC. PANEL"
+      ],
+      "content_summary": "This page provides an enlarged floor plan for Unit G, specifically Unit G-1, detailing its layout including a bedroom, kitchen, and bathroom. It also includes detailed kitchen elevations (UNIT G KITCHEN 1, UNIT G KITCHEN 2), a 3D view of the kitchen, and a bathroom plan (UNIT G BATHROOM). An \"ELEC. PANEL\" is indicated within the unit."
+    },
+    {
+      "page_num": 15,
+      "sheet_no": "A110",
+      "units": [
+        "RETAIL 1",
+        "RETAIL 2",
+        "RETAIL 3",
+        "RETAIL 4",
+        "RETAIL 5",
+        "RETAIL 6",
+        "RETAIL 7",
+        "UNIT A-2",
+        "UNIT B-2",
+        "UNIT C-1",
+        "UNIT D-1",
+        "UNIT E-2",
+        "UNIT F-1",
+        "UNIT G-1"
+      ],
+      "circuits": [],
+      "rooms": [
+        "RETAIL 1",
+        "RETAIL 2",
+        "RETAIL 3",
+        "RETAIL 4",
+        "RETAIL 5",
+        "RETAIL 6",
+        "RETAIL 7",
+        "BEDROOM",
+        "VESTIBULE"
+      ],
+      "panels": [],
+      "content_summary": "This page displays the Main Level Life Safety Plan, indicating exit routes and overall building layout for the main level. It also includes a \"ROOM CALCULATIONS\" table providing occupancy, area, and occupant load for all retail units (RETAIL 1-7) and residential units (UNIT A-2 to UNIT G-1), as well as plumbing requirements based on IPC Code 2012."
+    },
+    {
+      "page_num": 16,
+      "sheet_no": "A200",
+      "units": [],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page presents the Front Elevation and Left Elevation of the Trinity Wilds - Mixed Use building, showcasing the exterior architectural design, material finishes (stucco, brick, vertical siding, rulon siding), and floor levels (Main Level, 2nd Level, 3rd Level, 4th Level, Roof)."
+    },
+    {
+      "page_num": 17,
+      "sheet_no": "A201",
+      "units": [],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page displays the Rear Elevation and Right Elevation of the Trinity Wilds - Mixed Use building, illustrating the exterior architectural design, material finishes (stucco, brick, vertical siding, rulon siding), and floor levels (Main Level, 2nd Level, 3rd Level, 4th Level, Roof)."
+    },
+    {
+      "page_num": 18,
+      "sheet_no": "A300",
+      "units": [],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page provides Building Section 1 and Building Section 2 of the Trinity Wilds - Mixed Use project, illustrating vertical cross-sections of the building. These sections show the internal structure, floor levels (Main Level, 2nd Level, 3rd Level, 4th Level, Roof), and general spatial relationships."
+    },
+    {
+      "page_num": 19,
+      "sheet_no": "A302",
+      "units": [],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page provides detailed wall sections and construction details, including Wall Section 1, Wall Section 2, Parapet Wall Detail, Typical Slab on Grade Details, Interior Wall Footing, Exterior Wall to Floor detail, and a 1-Hr. Fire Wall (UL U303) detail. It specifies materials like concrete, studs, insulation, and roofing systems."
+    },
+    {
+      "page_num": 20,
+      "sheet_no": "A400",
+      "units": [
+        "UNIT A",
+        "UNIT B",
+        "UNIT C",
+        "UNIT D",
+        "UNIT E",
+        "UNIT F",
+        "UNIT G"
+      ],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page contains comprehensive Door and Window Schedules, listing various door and window types, their dimensions, descriptions, manufacturers, and the levels where they are located (Main Level, 2nd Level, Roof). The schedules include details for single flush doors, double curtain wall glass, double sliding doors, and casement windows."
+    },
+    {
+      "page_num": 21,
+      "sheet_no": "E.1",
+      "units": [
+        "RESIDENTIAL UNIT",
+        "RETAIL UNIT"
+      ],
+      "circuits": [
+        "1",
+        "2",
+        "5",
+        "6",
+        "9",
+        "10",
+        "13",
+        "14",
+        "17",
+        "18",
+        "21",
+        "22",
+        "7",
+        "8",
+        "11",
+        "12",
+        "15",
+        "16",
+        "19",
+        "20",
+        "23",
+        "24",
+        "37",
+        "38",
+        "39",
+        "40",
+        "41",
+        "42"
+      ],
+      "rooms": [
+        "KITCHEN",
+        "BATHROOM"
+      ],
+      "panels": [
+        "NEW PANEL BOARD A",
+        "TYP. PANEL BOARD B"
+      ],
+      "content_summary": "This page provides general electrical notes and detailed panel schedules for both residential and retail units. The \"NEW PANEL BOARD 'A'\" schedule lists circuits for lighting, outlets, AH-1, GFCI-Kitchen, Dishwasher, Range, Refrigerator, GFCI-Bathroom, CU-1, Washing Machine, Dryer, and Water Heating for residential units. The \"TYP. PANEL BOARD 'B'\" schedule lists circuits for lighting, Outlet HVAC, and RTU for retail units. Specifications for electrical components and installation are also included."
+    },
+    {
+      "page_num": 22,
+      "sheet_no": "E.2",
+      "units": [
+        "UNIT A",
+        "UNIT B",
+        "UNIT C",
+        "UNIT D",
+        "UNIT E",
+        "UNIT F",
+        "UNIT G",
+        "RETAIL UNIT"
+      ],
+      "circuits": [],
+      "rooms": [],
+      "panels": [
+        "POWER COMPANY METER",
+        "NEW 400A FUSED SERVICE SWITCH",
+        "NEW 200A FUSED SERVICE SWITCH",
+        "NEW PANEL"
+      ],
+      "content_summary": "This page displays the Electrical Wireway Riser Diagram, illustrating the electrical distribution from the power company meter and transformer cabinet to various panels across different floor levels (Floor #1, Floor #2, Floor #3, Floor #4). It shows the connection of multiple \"NEW PANEL\" units (A through G) on each floor via fused service switches and wireways."
+    },
+    {
+      "page_num": 23,
+      "sheet_no": "E.3",
+      "units": [
+        "UNIT A"
+      ],
+      "circuits": [
+        "A-15",
+        "220V",
+        "GFCI"
+      ],
+      "rooms": [
+        "BEDROOM",
+        "BATHROOM",
+        "KITCHEN",
+        "LIVING AREA"
+      ],
+      "panels": [
+        "PANEL A"
+      ],
+      "content_summary": "This page provides the Electrical Plan and Ceiling Plan for Unit A. The electrical plan shows the layout of receptacles, switches, and lighting fixtures, indicating a \"PANEL A\" and specific circuits like \"A-15\" and \"220V\" for appliances, along with GFCI outlets. The ceiling plan illustrates the lighting fixture arrangement and ceiling fans."
+    },
+    {
+      "page_num": 24,
+      "sheet_no": "E.4",
+      "units": [
+        "UNIT B"
+      ],
+      "circuits": [
+        "A-10",
+        "A-3",
+        "GFCI"
+      ],
+      "rooms": [
+        "BEDROOM",
+        "BATHROOM",
+        "KITCHEN",
+        "LIVING AREA"
+      ],
+      "panels": [
+        "PANEL A",
+        "REMOTE UNIT"
+      ],
+      "content_summary": "This page displays the Electrical Plan and Ceiling Plan for Unit B. The electrical plan shows the layout of receptacles, switches, and lighting fixtures, indicating a \"PANEL A\", a \"REMOTE UNIT\", and specific circuits like \"A-10\" and \"A-3\", along with GFCI outlets. The ceiling plan illustrates the lighting fixture arrangement and ceiling fans."
+    },
+    {
+      "page_num": 25,
+      "sheet_no": "E.5",
+      "units": [
+        "UNIT C"
+      ],
+      "circuits": [
+        "A-1",
+        "202",
+        "220V",
+        "GFCI"
+      ],
+      "rooms": [
+        "BEDROOM",
+        "BATHROOM",
+        "KITCHEN",
+        "LIVING AREA"
+      ],
+      "panels": [
+        "PANEL A",
+        "REMOTE UNIT"
+      ],
+      "content_summary": "This page provides the Electrical Plan and Ceiling Plan for Unit C. The electrical plan shows the layout of receptacles, switches, and lighting fixtures, indicating a \"PANEL A\", a \"REMOTE UNIT\", and specific circuits like \"A-1\", \"202\", and \"220V\", along with GFCI outlets. The ceiling plan illustrates the lighting fixture arrangement and ceiling fans."
+    },
+    {
+      "page_num": 26,
+      "sheet_no": "E.6",
+      "units": [
+        "UNIT D"
+      ],
+      "circuits": [
+        "A-13",
+        "A-15",
+        "A-16",
+        "A-19",
+        "A-20",
+        "A-23",
+        "A-14",
+        "A-11",
+        "A-10",
+        "A-12",
+        "A-8",
+        "GFCI"
+      ],
+      "rooms": [
+        "BEDROOM",
+        "BATHROOM",
+        "KITCHEN",
+        "LIVING AREA"
+      ],
+      "panels": [
+        "PANEL A",
+        "REMOTE UNIT"
+      ],
+      "content_summary": "This page displays the Electrical Plan and Ceiling Plan for Unit D. The electrical plan shows the layout of receptacles, switches, and lighting fixtures. General-purpose outlets in the bedroom and living area are connected in a loop powered by circuit A-13. The entryway hallway receptacle is powered by circuit A-15. The bathroom GFCI is powered by circuit A-16. Dedicated circuits include A-19 (washer), A-20 (dryer), A-23 (water heater), A-14 (refrigerator), A-11 (dishwasher), A-10 (kitchen countertop GFCI), A-12 (range), and A-8 (AC remote unit)."
+    },
+    {
+      "page_num": 27,
+      "sheet_no": "E.7",
+      "units": [
+        "UNIT E"
+      ],
+      "circuits": [
+        "A-19",
+        "220V",
+        "GFCI"
+      ],
+      "rooms": [
+        "BEDROOM",
+        "BATHROOM",
+        "KITCHEN",
+        "LIVING AREA"
+      ],
+      "panels": [
+        "PANEL A",
+        "REMOTE UNIT"
+      ],
+      "content_summary": "This page provides the Electrical Plan and Ceiling Plan for Unit E. The electrical plan shows the layout of receptacles, switches, and lighting fixtures, indicating a \"PANEL A\", a \"REMOTE UNIT\", and specific circuits like \"A-19\" and \"220V\", along with GFCI outlets. The ceiling plan illustrates the lighting fixture arrangement and ceiling fans."
+    },
+    {
+      "page_num": 28,
+      "sheet_no": "E.8",
+      "units": [
+        "UNIT F"
+      ],
+      "circuits": [
+        "220V",
+        "GFCI"
+      ],
+      "rooms": [
+        "BEDROOM",
+        "BATHROOM",
+        "KITCHEN",
+        "LIVING AREA"
+      ],
+      "panels": [
+        "PANEL A",
+        "REMOTE UNIT"
+      ],
+      "content_summary": "This page displays the Electrical Plan and Ceiling Plan for Unit F. The electrical plan shows the layout of receptacles, switches, and lighting fixtures, indicating a \"PANEL A\", a \"REMOTE UNIT\", and a \"220V\" connection, along with GFCI outlets. The ceiling plan illustrates the lighting fixture arrangement and ceiling fans."
+    },
+    {
+      "page_num": 29,
+      "sheet_no": "E.9",
+      "units": [
+        "UNIT G"
+      ],
+      "circuits": [
+        "A-3",
+        "A-8",
+        "A-13",
+        "GFCI"
+      ],
+      "rooms": [
+        "BEDROOM",
+        "BATHROOM",
+        "KITCHEN",
+        "LIVING AREA"
+      ],
+      "panels": [
+        "PANEL A",
+        "REMOTE UNIT"
+      ],
+      "content_summary": "This page provides the Electrical Plan and Ceiling Plan for Unit G. The electrical plan shows the layout of receptacles, switches, and lighting fixtures, indicating a \"PANEL A\", a \"REMOTE UNIT\", and specific circuits like \"A-3\", \"A-8\", and \"A-13\", along with GFCI outlets. The ceiling plan illustrates the lighting fixture arrangement and ceiling fans."
+    },
+    {
+      "page_num": 30,
+      "sheet_no": "M.1",
+      "units": [
+        "RETAIL - 2-6",
+        "RETAIL - 7",
+        "RETAIL - 1"
+      ],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page contains comprehensive HVAC General Notes, outlining specifications for mechanical equipment, installation, coordination, and testing. It also includes a \"NEW ROOF TOP UNIT SCHEDULE\" detailing cooling and heating capacities, electrical data (voltage, MCA, MOCP, RLA, LRA, FLA), and model information for RTU units serving various retail areas."
+    },
+    {
+      "page_num": 31,
+      "sheet_no": "M.2",
+      "units": [
+        "RESIDENTIAL UNIT"
+      ],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page provides submittal data sheets for Mitsubishi Electric M-Series HVAC units, specifically the MXZ-8C48NA multi-indoor inverter heat-pump system (outdoor unit) and MSZ-GL09NA (Type A) and MSZ-GL12NA (Type B) wall-mounted indoor units. It includes general features, specifications (capacity, electrical requirements, dimensions, refrigerant pipe sizes), and accessories for these residential HVAC systems."
+    },
+    {
+      "page_num": 32,
+      "sheet_no": "M.3",
+      "units": [
+        "UNIT A",
+        "UNIT B",
+        "UNIT C",
+        "UNIT D",
+        "UNIT E",
+        "UNIT F",
+        "UNIT G"
+      ],
+      "circuits": [],
+      "rooms": [],
+      "panels": [],
+      "content_summary": "This page displays the Mechanical Plan, illustrating the layout of HVAC units (labeled as Type A and Type B) across a typical floor of the residential building. The plan shows the placement of these units within multiple distinct residential spaces, indicating the mechanical system distribution."
+    }
+  ]
+}

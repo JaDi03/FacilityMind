@@ -10,15 +10,12 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import google.generativeai as genai
 
 from config import GEMINI_API_KEY, GeminiModels, Thresholds
 from models.schemas import ReasonerOutput, ValidatorOutput, SourceCitation, SafetyAssessment
 from ingestion.pdf_loader import load_blueprint_as_text
 
 logger = logging.getLogger(__name__)
-
-genai.configure(api_key=GEMINI_API_KEY)
 
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "validator.txt"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8") if PROMPT_PATH.exists() else ""
@@ -144,7 +141,6 @@ Generate your validation in the specified strict JSON format.
                 # CRITICAL FIX: Reload the text for fallback if we cleared it!
                 if plano_texto == "(Original blueprint text not available for verification)" or not plano_texto.strip():
                     if plano_completo_path and os.path.exists(plano_completo_path):
-                        from ingestion.pdf_loader import load_blueprint_as_text
                         plano_texto = load_blueprint_as_text(plano_completo_path)
                     elif contexto_rag:
                         plano_texto = contexto_rag
@@ -276,6 +272,12 @@ def _aplicar_thresholds(output: ValidatorOutput, reasoner: ReasonerOutput) -> Va
         output.warnings.append("DANGEROUS OPERATION DETECTED: Unauthorized electrical system modification requested")
         if not output.rejection_reason:
             output.rejection_reason = "Query involves dangerous and potentially illegal technical operations"
+
+    # CRITICAL SECURITY GUARDRAIL: If validation fails, NEVER allow the validator to overwrite/rewrite the response.
+    # We must preserve the Reasoner's original candidate response to prevent validator-side hallucinations from overriding it.
+    if not output.approved:
+        logger.warning("[Validator Security] Validation rejected. Resetting final_response to Reasoner's original text to avoid validator hallucinations.")
+        output.final_response = reasoner.candidate_response
 
     return output
 

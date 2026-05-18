@@ -10,15 +10,12 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import google.generativeai as genai
 
 from config import GEMINI_API_KEY, GeminiModels, MAX_CONTEXT_CHARS
 from models.schemas import PerceptionOutput, ReasonerOutput, SourceCitation, TracedCircuit
 from ingestion.pdf_loader import load_blueprint_as_text
 
 logger = logging.getLogger(__name__)
-
-genai.configure(api_key=GEMINI_API_KEY)
 
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "reasoner.txt"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8") if PROMPT_PATH.exists() else ""
@@ -68,7 +65,31 @@ async def agente_razonador(
         
         # Regex for circuit patterns (matches "A-9", "A 10", "A9", etc. with high precision)
         circuit_match = re.search(r'\b([A-Z])\s*[-–—]?\s*(\d+)\b', combined_text, re.IGNORECASE)
-        circuit = f"{circuit_match.group(1).upper()}-{circuit_match.group(2)}" if circuit_match else None
+        circuit = None
+        if circuit_match:
+            candidate_circuit = f"{circuit_match.group(1).upper()}-{circuit_match.group(2)}"
+            # Avoid matching sheet IDs or blueprint IDs (like E-14, P-2) as circuits.
+            is_sheet_id = False
+            
+            # Check 1: Is it a registered blueprint ID in our vector store?
+            try:
+                registered_blueprints = vector_store.list_blueprints()
+                if candidate_circuit in registered_blueprints or candidate_circuit.replace("-", "") in registered_blueprints:
+                    is_sheet_id = True
+                    logger.info(f"[Reasoner] Rejected candidate circuit '{candidate_circuit}' because it matches a registered blueprint ID.")
+            except Exception as e:
+                logger.warning(f"[Reasoner] Could not query registered blueprints for circuit filtering: {e}")
+            
+            # Check 2: Does it match sheet indicators in the text?
+            if not is_sheet_id and candidate_circuit.startswith(("E-", "P-", "A-", "M-", "S-")):
+                context_lower = combined_text.lower()
+                for indicator in ["blueprint", "plano", "sheet", "hoja", "document"]:
+                    if f"{indicator} {candidate_circuit.lower()}" in context_lower or f"{indicator} {circuit_match.group(1).lower()}-{circuit_match.group(2)}" in context_lower:
+                        is_sheet_id = True
+                        break
+            
+            if not is_sheet_id:
+                circuit = candidate_circuit
         
         # Regex for unit patterns (matches "UNIT B", "UNIDAD B", "UNITB")
         unit_match = re.search(r'\b(?:UNIT|UNIDAD)\s*([A-G])\b', combined_text, re.IGNORECASE)
@@ -151,19 +172,9 @@ async def agente_razonador(
             rag_context=contexto_rag
         )
 
-    # Additional safety: if RAG is empty but we have cache, add a strong warning
+    # Additional safety: if RAG is empty but we have cache, log it and rely on native PDF cache (FIX 7)
     if rag_is_empty and active_cache:
-        logger.warning("[Reasoner] WARNING: RAG empty but cache active. "
-                      "Adding anti-hallucination constraint.")
-        # Add constraint to prompt
-        perception.query_objective = (
-            f"{perception.query_objective}\n\n"
-            f"CRITICAL CONSTRAINT: The RAG database returned ZERO results for this query. "
-            f"You MUST ONLY answer using information you can directly verify from the "
-            f"cached blueprint. If you cannot find the specific answer in the blueprint, "
-            f"state EXPLICITLY: 'No encontrado en la documentacion disponible.' "
-            f"DO NOT fabricate any measurements, circuit numbers, or specifications."
-        )
+        logger.info("[Reasoner] RAG empty but cache active - relying on native PDF analysis")
 
     # --- 3. Prompt Construction & Gemini Pro Execution ---
     prompt = _construir_prompt(perception, contexto_rag, plano_texto, historial, has_cache=bool(active_cache))
@@ -293,8 +304,12 @@ def _construir_query(perception: PerceptionOutput) -> str:
     if perception.discipline:
         partes.append(perception.discipline)
 
-    query = " ".join(partes) if partes else perception.query_objective or "general inquiry"
-    return query
+    query_en = " ".join(partes) if partes else perception.query_objective or "general inquiry"
+    
+    # Multilingual search: Append original transcription if it is not in English
+    if perception.raw_transcription and perception.detected_language != "en":
+        return f"{query_en} | {perception.raw_transcription}"
+    return query_en
 
 
 def _formatear_rag(results: dict) -> str:

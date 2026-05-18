@@ -5,8 +5,9 @@ Stores blueprint embeddings for efficient semantic retrieval.
 
 import chromadb
 from chromadb.api.types import Documents, Embeddings
-import google.generativeai as genai
-from typing import List, Dict, Optional
+from google import genai
+from google.genai import types
+from typing import List, Dict, Optional, Union
 import logging
 
 from config import CHROMA_PATH, COLLECTION_NAME, GEMINI_API_KEY, GeminiModels
@@ -16,11 +17,10 @@ logger = logging.getLogger(__name__)
 
 class GoogleGeminiEmbeddingFunction:
     """
-    Custom embedding function for Google Gemini to resolve compatibility issues 
-    between ChromaDB and the Google Generative AI SDK.
+    Custom embedding function for Google Gemini using SDK v2 (google-genai).
     """
     def __init__(self, api_key: str, model_name: str):
-        genai.configure(api_key=api_key)
+        self.client = genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
         self.model_name = model_name
 
     def name(self) -> str:
@@ -28,24 +28,48 @@ class GoogleGeminiEmbeddingFunction:
 
     def __call__(self, input: Documents) -> Embeddings:
         try:
-            response = genai.embed_content(
+            # Handle empty/null inputs gracefully
+            if not input:
+                return []
+            response = self.client.models.embed_content(
                 model=self.model_name,
-                content=input,
-                task_type="retrieval_document"
+                contents=input,
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_DOCUMENT"
+                )
             )
-            return response['embedding']
+            if hasattr(response, "embeddings") and response.embeddings:
+                return [emb.values for emb in response.embeddings]
+            elif hasattr(response, "embedding") and response.embedding:
+                return response.embedding.values
+            return []
         except Exception as e:
             logger.error(f"Error calling Gemini Embedding API: {e}")
             raise
 
-    def embed_query(self, input: str) -> List[float]:
+    def embed_query(self, input: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
         try:
-            response = genai.embed_content(
+            if not input:
+                return []
+            
+            # Resiliency: If a single string is passed, wrap it as a list so we call the API cleanly
+            is_single_string = isinstance(input, str)
+            api_input = [input] if is_single_string else input
+            
+            response = self.client.models.embed_content(
                 model=self.model_name,
-                content=input,
-                task_type="retrieval_query"
+                contents=api_input,
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_QUERY"
+                )
             )
-            return response['embedding']
+            
+            if hasattr(response, "embeddings") and response.embeddings:
+                embeddings_list = [emb.values for emb in response.embeddings]
+                return embeddings_list[0] if is_single_string else embeddings_list
+            elif hasattr(response, "embedding") and response.embedding:
+                return response.embedding.values if is_single_string else [response.embedding.values]
+            return []
         except Exception as e:
             logger.error(f"Error calling Gemini Embedding API (query): {e}")
             raise

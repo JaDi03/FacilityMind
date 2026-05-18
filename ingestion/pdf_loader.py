@@ -103,18 +103,22 @@ def extract_all_pages_with_vision(pdf_path: str, uploaded_file=None) -> dict:
     
     def process_single_page(page_idx):
         page_num = page_idx + 1
-        temp_pdf_path = temp_dir / f"page_{page_num}.pdf"
+        temp_img_path = temp_dir / f"page_{page_num}.png"
         
         try:
-            # 1. Isolate the single page
-            writer = PdfWriter()
-            writer.add_page(reader.pages[page_idx])
-            with open(temp_pdf_path, "wb") as f:
-                writer.write(f)
+            # 1. Render the page to high-res PNG using PyMuPDF (fitz) at 4x zoom (288 DPI)
+            import fitz
+            doc = fitz.open(pdf_path)
+            page = doc.load_page(page_idx)
+            zoom = 4.0  # 4x zoom provides extremely crisp text for blueprints (288 DPI)
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            pix.save(str(temp_img_path))
+            doc.close()
                 
             # 2. Upload to Gemini
             up_file = client.files.upload(
-                file=str(temp_pdf_path),
+                file=str(temp_img_path),
                 config={'display_name': f'ocr_page_{page_num}'}
             )
             
@@ -128,24 +132,32 @@ def extract_all_pages_with_vision(pdf_path: str, uploaded_file=None) -> dict:
                 raise Exception("Gemini processing failed")
                 
             # 3. Meticulous extraction prompt
-            prompt = f"""You are a master electrical and architectural indexing agent.
-Perform a high-fidelity visual and textual audit of this isolated blueprint page (Page {page_num} of the PDF).
+            prompt = f"""You are a master electrical blueprint OCR agent analyzing Page {page_num}.
 
-Extract all visible annotations with absolute technical precision:
-1. Sheet Info: Sheet title, sheet number, building ID, and drawing scale.
-2. Room Labels: Every room or unit name visible (e.g. UNIT D Bedroom, Kitchen, Living Room).
-3. Electrical Circuits: Locate all outlets, equipment, and devices. Follow the dashed line conduit loops to find exactly which circuit (e.g. A-13, A-15, A-16, A-19, A-20, A-23) feeds each symbol.
-4. Panel Board Info: Note any electrical panels (e.g. PANEL A) and schedule data.
-5. Content Summary: Provide a highly detailed summary explaining which circuits physically power which appliances or areas.
+## YOUR TASK:
+Read ALL text and annotations visible on this blueprint page. Report exactly what you see.
 
-Respond with the extracted text in a clean, highly structured format.
+## RULES:
+1. For circuit labels (like "A-9", "A-13", "A-15", "A-23"): Report the EXACT text you see written on the drawing. Read each character carefully.
+2. For each circuit label you find, list which electrical symbols (outlets, switches, lights) are PHYSICALLY NEAR that label or connected to it by a dashed line on the drawing.
+3. If you see outlet symbols that have NO circuit label near them and NO dashed line connecting to any label, report them as having "No circuit label visible".
+4. DO NOT copy data from a panel schedule table and apply it to floor plan symbols. Panel schedules and floor plans are separate things.
+
+## EXTRACT:
+1. **Sheet Info**: Title, number, building ID, scale.
+2. **Room Labels**: All room/unit names visible.
+3. **Circuit Labels Found**: List every circuit label text visible on the floor plan drawing (e.g., "A-9", "A-13"). For each, describe what devices it appears to serve based on its position in the drawing.
+4. **Panel Board Info**: Panel name, location, schedule data if visible.
+5. **Summary**: Brief factual description of the page content.
+
+Be thorough — report ALL labels you can read. Do not omit labels out of caution.
 """
             
             response = client.models.generate_content(
                 model=GeminiModels.VISION_OCR,
                 contents=[prompt, up_file],
                 config=types.GenerateContentConfig(
-                    temperature=0.1
+                    temperature=0.0
                 )
             )
             
@@ -158,17 +170,17 @@ Respond with the extracted text in a clean, highly structured format.
                 pass
                 
             # Clean up temp file
-            if os.path.exists(temp_pdf_path):
-                os.remove(temp_pdf_path)
+            if os.path.exists(temp_img_path):
+                os.remove(temp_img_path)
                 
             logger.info(f"[Vision OCR] Successfully indexed Page {page_num}/{total_pages}")
             return page_num, extracted_text
             
         except Exception as e:
             logger.error(f"[Vision OCR] Error indexing Page {page_num}: {e}")
-            if os.path.exists(temp_pdf_path):
+            if os.path.exists(temp_img_path):
                 try:
-                    os.remove(temp_pdf_path)
+                    os.remove(temp_img_path)
                 except Exception:
                     pass
             return page_num, f"Error processing page: {e}"
@@ -185,6 +197,20 @@ Respond with the extracted text in a clean, highly structured format.
     elapsed = time.time() - start_time
     logger.info(f"[Vision OCR] High-fidelity parallel indexing complete for {total_pages} pages in {elapsed:.1f}s")
     
+    # Save the extracted texts to disk so they can be loaded by load_blueprint_as_text() (FIX 5)
+    try:
+        save_dir = Path("scratch/extracted_texts")
+        save_dir.mkdir(parents=True, exist_ok=True)
+        pdf_stem = Path(pdf_path).stem
+        save_path = save_dir / f"{pdf_stem}.json"
+        
+        # Serialize with json
+        import json
+        save_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info(f"[Vision OCR] Saved high-fidelity extracted texts to: {save_path}")
+    except Exception as e:
+        logger.warning(f"[Vision OCR] Could not persist extracted texts to disk: {e}")
+
     # Clean up temp dir
     try:
         os.rmdir(temp_dir)
@@ -262,7 +288,16 @@ def load_blueprint(
 
 
 def load_blueprint_as_text(pdf_path: str, max_chars: int = 500000) -> str:
-    """Returns empty string — text extraction is handled entirely by Vision OCR."""
+    """Load extracted text from Vision OCR results stored on disk."""
+    cache_path = Path("scratch/extracted_texts") / f"{Path(pdf_path).stem}.json"
+    if cache_path.exists():
+        import json
+        try:
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
+            texts = [f"--- Page {p} ---\n{t}" for p, t in sorted(data.items(), key=lambda x: int(x[0]))]
+            return "\n\n".join(texts)[:max_chars]
+        except Exception as e:
+            logger.warning(f"Error reading extracted text JSON: {e}")
     return ""
 
 
@@ -293,3 +328,40 @@ def list_available_blueprints(directory: str = "./data/raw") -> List[Dict]:
             logger.error(f"Error reading {pdf_file}: {e}")
 
     return blueprints
+
+
+def extract_metadata_from_text(text: str) -> dict:
+    """
+    Parses units, circuits, rooms, panels, and sheet_no from raw OCR text using regex.
+    This provides super-fast metadata extraction without calling another LLM.
+    """
+    import re
+    
+    # Circuits: match A-13, C-14, P-5, etc.
+    circuits = sorted(list(set(re.findall(r'\b[A-Z]-\d+\b', text) + re.findall(r'\bC-\d+\b', text))))
+    
+    # Units: match UNIT A, UNIT B, UNIT 102, etc.
+    units = sorted(list(set(re.findall(r'\bUNIT\s+[A-G0-9]\b', text, re.IGNORECASE) + re.findall(r'\bUNIDAD\s+[A-G0-9]\b', text, re.IGNORECASE))))
+    units = [u.upper() for u in units]
+    
+    # Panels: match PANEL A, PANEL B, TABLERO A, etc.
+    panels = sorted(list(set(re.findall(r'\bPANEL\s+[A-Z0-9]\b', text, re.IGNORECASE) + re.findall(r'\bTABLERO\s+[A-Z0-9]\b', text, re.IGNORECASE))))
+    panels = [p.upper() for p in panels]
+    
+    # Rooms: common room labels in Spanish/English
+    room_keywords = r'\b(BEDROOM|KITCHEN|LIVING|DINING|LAUNDRY|BATHROOM|HALLWAY|RECAMARA|RECÁMARA|SALA|COMEDOR|COCINA|BAÑO|CUARTO|PASILLO|CLOSET)\b'
+    rooms = sorted(list(set(re.findall(room_keywords, text, re.IGNORECASE))))
+    rooms = [r.upper() for r in rooms]
+    
+    # Sheet number: e.g. Sheet E.14 or Sheet E-14
+    sheet_match = re.search(r'\bSheet\s*([A-Z0-9.\-]+)\b', text, re.IGNORECASE)
+    sheet_no = sheet_match.group(1) if sheet_match else ""
+    
+    return {
+        "circuits": circuits,
+        "units": units,
+        "rooms": rooms,
+        "panels": panels,
+        "sheet_no": sheet_no
+    }
+

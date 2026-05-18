@@ -164,9 +164,13 @@ if "messages" not in st.session_state:
 
 # ─── Sidebar ───
 with st.sidebar:
-    st.image("app/assets/logo.png", width=120)
-    st.title("FacilityMind")
-    st.markdown("Professional Facility Management AI")
+    # Use columns to center the logo
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        st.image("app/assets/logo.png", use_container_width=True)
+        
+    st.markdown("<h1 style='text-align: center; margin-top: -15px;'>FacilityMind</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Professional Facility Management AI</p>", unsafe_allow_html=True)
     
     # Grid columns for status badges
     col_status1, col_status2 = st.columns(2)

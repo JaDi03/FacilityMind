@@ -43,25 +43,45 @@ def ingest_file(file_path: str, blueprint_id: str = None, blueprint_type: str = 
         print(f"   Type: {blueprint_type}")
 
     try:
-        # 1. Load documents from PDF
-        documentos = load_blueprint(file_path, plano_id=blueprint_id, edificio_id=building_id)
+        # 1. Load basic document layout
+        documentos = load_blueprint(file_path, blueprint_id=blueprint_id, building_id=building_id)
 
         if not documentos:
-            print("❌ Could not extract text from PDF. Is it a scanned PDF without OCR?")
+            print("❌ Could not extract pages from PDF.")
             return False
 
         # Overwrite discipline type if specified
         if blueprint_type:
             for doc in documentos:
-                doc["metadata"]["tipo_plano"] = blueprint_type
+                doc["metadata"]["blueprint_type"] = blueprint_type
 
-        print(f"   📑 {len(documentos)} pages extracted")
+        print(f"   📑 {len(documentos)} pages registered. Running high-fidelity parallel Vision OCR...")
 
-        # 2. Create intelligent chunks
+        # 2. Extract technical text page-by-page using parallel Vision OCR
+        from ingestion.pdf_loader import extract_all_pages_with_vision, extract_metadata_from_text
+        page_texts = extract_all_pages_with_vision(file_path)
+
+        for doc in documentos:
+            page_num = doc["metadata"]["page"]
+            vision_text = page_texts.get(page_num, "")
+            doc["text"] = f"[PDF Page {page_num} - Vision OCR]\n{vision_text}"
+            
+            # Enrich metadata with extracted structural tags (FIX 4)
+            extracted = extract_metadata_from_text(vision_text)
+            doc["metadata"]["circuits"] = ",".join(extracted["circuits"])
+            doc["metadata"]["units"] = ",".join(extracted["units"])
+            doc["metadata"]["rooms"] = ",".join(extracted["rooms"])
+            doc["metadata"]["panels"] = ",".join(extracted["panels"])
+            if extracted["sheet_no"]:
+                doc["metadata"]["sheet_no"] = extracted["sheet_no"]
+
+        print("   ✅ Vision OCR complete. Segmenting text...")
+
+        # 3. Create intelligent chunks from populated text
         chunks = create_intelligent_chunks(documentos, incluir_tablas=True)
         print(f"   🧩 {len(chunks)} chunks generated (pages + tables)")
 
-        # 3. Index in Chroma
+        # 4. Index in Chroma
         store = BlueprintVectorStore(persist_path=CHROMA_PATH, collection=COLLECTION_NAME)
         num_agregados = store.add_chunks(chunks)
 

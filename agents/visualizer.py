@@ -11,14 +11,11 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import google.generativeai as genai
 
 from config import GEMINI_API_KEY, GeminiModels, VISUALIZATION_ENABLED
 from models.schemas import ReasonerOutput, ValidatorOutput, VisualizationOutput
 
 logger = logging.getLogger(__name__)
-
-genai.configure(api_key=GEMINI_API_KEY)
 
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "visualizer.txt"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8") if PROMPT_PATH.exists() else ""
@@ -111,8 +108,12 @@ OUTPUT: Return ONLY a JSON object with:
 """
 
     try:
-        model = genai.GenerativeModel(MODEL_TEXT)
-        response = await model.generate_content_async(prompt)
+        from google import genai as genai_v2
+        client = genai_v2.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
+        response = await client.aio.models.generate_content(
+            model=MODEL_TEXT,
+            contents=prompt
+        )
         raw = response.text.replace("```json", "").replace("```", "").strip()
 
         data = json.loads(raw)

@@ -25,7 +25,10 @@ Every technical data point MUST include its source:
 - Page: The exact 1-indexed **PDF Page Number** (from 1 to the total number of pages in the PDF document) in `page_number`. For example, if Sheet E.6 is the 26th page in the PDF, the page number MUST be `26`. Do NOT default to page `1` unless the information is literally on the cover sheet/first page of the PDF.
 - Cited Text: The literal text from the blueprint that supports the statement in `cited_text`.
 
-### 3. PROHIBITIONS
+### 3. PROHIBITIONS (BALANCED ACCURACY)
+- **LABELED CIRCUITS = TRUST THEM**: If a circuit label (like "A-15" or "P-5") is explicitly drawn next to a symbol on the electrical floor plan, you MUST report it with full confidence. Do NOT second-guess labels that are clearly visible on the electrical plan sheets (E.3, E.4, E.5, etc.).
+- **UNLABELED SYMBOLS = DO NOT GUESS BUT DO TRACE CONNECTIONS**: If a symbol has NO text label next to it on the floor plan, check if it is connected by a dashed/curved conduit path (which represents a physical circuit run) to another nearby symbol that DOES have a text label. If they are connected by a dashed line, they share the same circuit. Only state "No circuit is specified" if a symbol has no label next to it AND no dashed line connecting it to any labeled symbol. Do NOT invent a circuit number from a generic Panel Schedule if there are no floor plan labels or connections.
+- **DO NOT ASSOCIATE DEDICATED CIRCUITS**: Never associate unlabeled general outlets with nearby labeled circuits that belong to dedicated appliances (like an A/C unit or washer/dryer).
 - NEVER fabricate wire gauges, breaker numbers, materials, or codes that do not appear in the blueprints.
 - NEVER assume a circuit follows a "logical" pattern if the blueprint indicates otherwise.
 - If information is missing from available blueprints, state EXPLICITLY: "Not found in available documentation."
@@ -40,6 +43,7 @@ If a response requires information from multiple disciplines (e.g., architectura
 When asked about specific outlets/receptacles or contacts in a SPECIFIC ROOM (e.g., "dormitorio/recámara de UNIT-A", "sala de UNIT C"):
 1. **Locate the Specific Room**: Look at the layout of that exact room on the electrical blueprint (e.g., plan E.3 for Unit A, plan E.5 for Unit C).
 2. **Scan for Labels next to Symbols**: Electrical symbols (like contacts/outlets, duplex receptacles, switches) have text labels written *immediately adjacent* to them on the drawing.
+   - **READ EACH DIGIT CAREFULLY**: When reading a circuit label, read each character one by one. Pay extreme attention to easily confused digits: 5 vs 9, 1 vs 7, 3 vs 8, 6 vs 0. If the label says "A-9", do NOT misread it as "A-15" or any other number. Zoom in mentally on each digit.
 3. **Interpret the Label Format `[Panel]-[Circuit]`**:
    - The label format is consistently `[Panel Name]-[Circuit Number]`.
    - For example, if you see the label **`P-5`** next to a bedroom outlet symbol:
@@ -64,8 +68,18 @@ When asked about specific outlets/receptacles or contacts in a SPECIFIC ROOM (e.
    - Always verify if a letter stands for a Spanish term (like `C` for Circuito, `T` for Tablero) before translating it as a separate Panel name.
 
 7. **The Floor Plan Drawing Governs Absolutely (El Dibujo Manda)**:
-   - The **floor plan drawing (layout/planta)** is the **supreme and absolute authority** for identifying circuits.
+   - The **floor plan drawing (layout/planta)** is the **supreme and absolute authority** for identifying circuits and circuit routing.
    - The **Panel Schedule / Load Schedule (Cuadro de Cargas)** on Sheet E.1 is typical, generic, and meant for load calculations *only*. It is **NOT** a reference for circuit routing or outlet assignments.
+   
+   ## SOURCE PRIORITY HIERARCHY (apply in this exact order):
+   1. FLOOR PLAN DRAWING (layout/planta) - SUPREME AUTHORITY for circuit routing
+   2. PANEL SCHEDULE (Cuadro de Cargas) - Authority for breaker numbers and load data
+   3. ONE-LINE DIAGRAM - Authority for feeder relationships
+   4. SPECIFICATIONS - Authority for materials and gauges
+   When floor plan and schedule conflict: Floor plan WINS for circuit routing.
+   When schedule and specifications conflict: Schedule WINS for breaker data.
+   Always report the conflict but apply the hierarchy.
+   
    - **Handling Unlabeled Receptacles**: If general-purpose outlets in a room are **unlabeled** on the floor plan drawing (i.e., there is no text like "A-9" next to the symbols in the layout):
      - State EXPLICITLY: **"No circuit is specified on the drawing for these outlets"** (No se especifica circuito en el dibujo para estos contactos).
      - **NEVER** attempt to deduce or assign a circuit number to these outlets by referencing the generic Panel Schedule.

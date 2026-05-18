@@ -18,15 +18,15 @@ if not GEMINI_API_KEY:
 # ─── Model Selection ───
 class GeminiModels:
     # Agent 1 — Perception
-    PERCEPTION = "models/gemini-2.5-flash"
+    PERCEPTION = "gemini-3.1-pro-preview"
     # Agent 2 — Reasoner
-    REASONER = "models/gemini-2.5-pro"
+    REASONER = "gemini-3.1-pro-preview"
     # Agent 3 — Validator
-    VALIDATOR = "models/gemini-2.5-pro"
+    VALIDATOR = "gemini-3.1-pro-preview"
     # Agent 4 — Visualizer
     VISUALIZER_IMAGE = "models/imagen-4.0-ultra-generate-001"
     # Vision OCR — Blueprint page extraction (converts CAD drawings to structured text)
-    VISION_OCR = "models/gemini-2.5-flash"
+    VISION_OCR = "gemini-3.1-pro-preview"
     # Embeddings
     EMBEDDING = "models/gemini-embedding-001"
 

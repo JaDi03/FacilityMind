@@ -176,41 +176,54 @@ def _lobster_trap_inspect(prompt: str) -> SecurityVerdict:
 
     try:
         result = subprocess.run(
-            [str(LOBSTERTRAP_BIN), "inspect", "--policy", str(POLICY_PATH),
-             "--json", prompt],
+            [str(LOBSTERTRAP_BIN), "inspect", "--policy", str(POLICY_PATH), prompt],
             capture_output=True, text=True, timeout=5,
             encoding="utf-8", errors="replace"
         )
 
-        output = result.stdout.strip()
-        if not output:
-            output = result.stderr.strip()
+        output = result.stdout + "\n" + result.stderr
 
-        # Parse JSON output
-        data = {}
-        if output:
-            try:
-                data = json.loads(output)
-            except json.JSONDecodeError:
-                for line in output.split("\n"):
-                    line = line.strip()
-                    if line.startswith("{"):
-                        try:
-                            data = json.loads(line)
-                            break
-                        except json.JSONDecodeError:
-                            continue
+        # Parse text output for Policy Decision
+        action = "ALLOW"
+        matched_rule = None
+        deny_message = None
+        
+        import re
+        action_match = re.search(r'Action:\s*([A-Z]+)', output)
+        if action_match:
+            action = action_match.group(1).strip()
+            
+        rule_match = re.search(r'Rule:\s*(\w+)', output)
+        if rule_match:
+            matched_rule = rule_match.group(1).strip()
+            
+        msg_match = re.search(r'Message:\s*(.+)', output)
+        if msg_match:
+            deny_message = msg_match.group(1).strip()
 
-        action = data.get("action", "ALLOW")
         allowed = action in ("ALLOW", "LOG")
+
+        # Parse JSON output for metadata
+        data = {}
+        risk_score = 0.0
+        intent_category = "general"
+        import re
+        json_match = re.search(r'\{.*\}', output, re.DOTALL)
+        if json_match:
+            try:
+                data = json.loads(json_match.group(0))
+                risk_score = data.get("risk_score", 0.0)
+                intent_category = data.get("intent_category", "general")
+            except Exception:
+                pass
 
         verdict = SecurityVerdict(
             allowed=allowed,
             action=action,
-            risk_score=data.get("metadata", {}).get("risk_score", 0.0),
-            matched_rule=data.get("matched_rule", None),
-            deny_message=data.get("deny_message", None),
-            intent_category=data.get("metadata", {}).get("intent_category", "general"),
+            risk_score=risk_score,
+            matched_rule=matched_rule,
+            deny_message=deny_message,
+            intent_category=intent_category,
             raw_metadata=data
         )
 

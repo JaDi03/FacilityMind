@@ -27,7 +27,7 @@ from config import (
 )
 
 # Models
-from models.schemas import FacilityMindResponse, PlanoMetadata
+from models.schemas import FacilityMindResponse, PlanoMetadata, SafetyAssessment
 
 # Ingestion
 from ingestion.pdf_loader import load_blueprint, list_available_blueprints
@@ -147,23 +147,10 @@ def ejecutar_ocr_visual_background(pdf_path: str, blueprint_id: str,
 
         client = genai_v2.Client(api_key=GEMINI_API_KEY,
                                  http_options={'api_version': 'v1beta'})
-        uploaded_file = client.files.upload(
-            file=pdf_path, config={'display_name': f'{blueprint_id}_ocr'}
-        )
+        logger.info(f"[Background OCR] Starting high-fidelity parallel Vision OCR for {total_pages} pages...")
 
-        file_info = client.files.get(name=uploaded_file.name)
-        while file_info.state.name == "PROCESSING":
-            time.sleep(2)
-            file_info = client.files.get(name=uploaded_file.name)
-
-        if file_info.state.name == "FAILED":
-            raise Exception("Google Gemini failed to process the PDF.")
-
-        logger.info(f"[Background OCR] Processing {total_pages} pages in ONE call...")
-
-        # BATCH: ONE API call for ALL pages
-        pages_data = extract_all_pages_with_vision(pdf_path,
-                                                    uploaded_file=uploaded_file)
+        # Run parallel high-fidelity page-by-page OCR
+        pages_data = extract_all_pages_with_vision(pdf_path)
 
         vector_store = BlueprintVectorStore()
         vision_pages_processed = 0
@@ -174,6 +161,10 @@ def ejecutar_ocr_visual_background(pdf_path: str, blueprint_id: str,
             if vision_text.strip():
                 page_floor = infer_floor(blueprint_id, page_num - 1, total_pages)
                 tower = infer_tower(blueprint_id)
+
+                # Enrich metadata with extracted structural tags (FIX 4)
+                from ingestion.pdf_loader import extract_metadata_from_text
+                extracted = extract_metadata_from_text(vision_text)
 
                 doc_dict = {
                     "text": f"[PDF Page {page_num} - Vision OCR]\n{vision_text}",
@@ -187,6 +178,11 @@ def ejecutar_ocr_visual_background(pdf_path: str, blueprint_id: str,
                         "total_pages": int(total_pages),
                         "source": str(f"{blueprint_id}_p{page_num}"),
                         "file_name": os.path.basename(pdf_path),
+                        # Rich structural metadata filters
+                        "circuits": ",".join(extracted["circuits"]),
+                        "units": ",".join(extracted["units"]),
+                        "rooms": ",".join(extracted["rooms"]),
+                        "panels": ",".join(extracted["panels"]),
                     },
                     "id": f"{blueprint_id}_p{page_num}"
                 }
@@ -199,11 +195,7 @@ def ejecutar_ocr_visual_background(pdf_path: str, blueprint_id: str,
             else:
                 logger.info(f"[Background OCR] Page {page_num}/{total_pages} - no text.")
 
-        # Clean up the temporary OCR upload
-        try:
-            client.files.delete(name=uploaded_file.name)
-        except Exception:
-            pass
+        # No temporary OCR upload cleanup needed since we upload page-by-page and clean up immediately
         
         logger.info(f"[Background OCR] Finished! Processed {vision_pages_processed}/{total_pages} pages for {blueprint_id}.")
         
@@ -512,9 +504,12 @@ async def query_agents(
                            f"Estado: {plano_info}. " \
                            f"Responde amable y conciso (max 2 oraciones) en espanol."
 
-            import google.generativeai as genai
-            model = genai.GenerativeModel("models/gemini-2.5-flash")
-            quick_response = await model.generate_content_async(quick_prompt)
+            from google import genai as genai_v2
+            v2_client = genai_v2.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
+            quick_response = await v2_client.aio.models.generate_content(
+                model="models/gemini-2.5-flash",
+                contents=quick_prompt
+            )
             elapsed_ms = int((time.time() - start_time) * 1000)
 
             return {
@@ -635,9 +630,10 @@ async def query_agents(
 
         # ─── STEP 3: VALIDATOR AGENT ───
         logger.info(f"[Pipeline] === STEP 3: Validator ===")
+        pdf_path_on_disk = f"data/raw/{last_plano['blueprint_id']}.pdf" if loaded_blueprints else None
         validator = await agente_validador(
             reasoner=reasoner,
-            plano_completo_path=None,
+            plano_completo_path=pdf_path_on_disk,
             contexto_rag=reasoner.rag_context,
             active_cache=active_cache_validator
         )

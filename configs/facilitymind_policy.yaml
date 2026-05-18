@@ -59,6 +59,17 @@ ingress_rules:
         match_type: boolean
         value: true
 
+  # === Block sensitive file paths ===
+  - name: block_sensitive_paths
+    description: "Block attempts to read or access sensitive system files like /etc/passwd"
+    priority: 78
+    action: DENY
+    deny_message: "[LOBSTER TRAP] Blocked: Sensitive file path access detected."
+    conditions:
+      - field: contains_sensitive_paths
+        match_type: boolean
+        value: true
+
   # === Block system commands ===
   - name: block_system_commands
     description: "Block prompts containing OS-level commands"
