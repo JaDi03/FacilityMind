@@ -15,7 +15,7 @@
 
 <br/>
 
-![FacilityMind Cute Agents](assets/facilitymind_cute_agents.png)
+![FacilityMind Cute Agents](assets/facilitymind_cute_agents.PNG)
 
 </div>
 
