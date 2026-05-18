@@ -648,6 +648,15 @@ async def query_agents(
 
         # ─── BUILD FINAL RESPONSE ───
         elapsed_ms = int((time.time() - start_time) * 1000)
+        
+        # --- Nanopayments Web3 Billing (ARC Testnet) ---
+        from app.nanopayments import NanopaymentGateway
+        # Estimate characters for input (query + rag + base prompt)
+        input_chars = len(query_text) + (len(reasoner.rag_context) if hasattr(reasoner, 'rag_context') else 0) + 2000
+        # Estimate characters for output (final response)
+        output_chars = len(validator.final_response or reasoner.candidate_response) + 500
+        
+        billing_receipt = NanopaymentGateway.process_payment(input_chars, output_chars)
 
         response = FacilityMindResponse(
             response=validator.final_response or reasoner.candidate_response,
@@ -658,6 +667,7 @@ async def query_agents(
             requires_supervisor=validator.requires_supervisor,
             visualization=visualizacion,
             safety=validator.safety,
+            billing=billing_receipt,
             debug={
                 "perception": perception.model_dump(),
                 "reasoner": reasoner.model_dump(),

@@ -97,6 +97,18 @@ class VisualizationOutput(BaseModel):
     heatmap: Optional[str] = Field(None, description="Path to building heatmap (if applicable)")
 
 
+class BillingReceipt(BaseModel):
+    """Transaction receipt for Web3 Nanopayments on ARC testnet."""
+    network: str = Field(..., description="Blockchain network (e.g., ARC Testnet)")
+    currency: str = Field("USDC", description="Currency used")
+    input_tokens: int = Field(0, description="Estimated input tokens")
+    output_tokens: int = Field(0, description="Estimated output tokens")
+    amount_charged: float = Field(0.0, description="Amount charged in USDC")
+    tx_hash: str = Field(..., description="Transaction Hash")
+    wallet: str = Field(..., description="Wallet ID charged")
+    status: str = Field("PAID_AUTOMATICALLY", description="Payment status")
+
+
 class FacilityMindResponse(BaseModel):
     """Complete final response from the orchestrated system."""
     response: str = Field(..., description="Response text for the technician")
@@ -107,6 +119,7 @@ class FacilityMindResponse(BaseModel):
     requires_supervisor: bool = Field(False, description="Whether supervisor review is required")
     visualization: Optional[VisualizationOutput] = Field(None, description="Generated visualizations")
     safety: SafetyAssessment = Field(default_factory=SafetyAssessment, description="Safety assessment results")
+    billing: Optional[BillingReceipt] = Field(None, description="Nanopayment billing receipt")
     debug: dict = Field(default_factory=dict, description="Debug information from each agent")
     processing_time_ms: int = Field(0, description="Total processing time in milliseconds")
 

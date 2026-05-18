@@ -281,6 +281,17 @@ with tab1:
                                 st.caption(f"**Description:** {viz['visual_summary']}")
                             if viz.get("generated_image") and os.path.exists(viz["generated_image"]):
                                 st.image(viz["generated_image"], use_container_width=True)
+                                
+                    # Billing Receipt (History)
+                    if tech.get("billing"):
+                        bill = tech["billing"]
+                        st.markdown(f'''
+                        <div style="background-color:#f8f9fa; border-left: 5px solid #005571; padding:10px; margin:10px 0; border-radius:5px;">
+                            <strong style="color:#005571; font-size:15px;">🪙 Nanopago Procesado (Web3 {bill['network']})</strong><br/>
+                            <span style="font-size:14px; color:#333;">Cobro automático de <code>${bill['amount_charged']} {bill['currency']}</code></span><br/>
+                            <span style="color:gray; font-size:12px;">Tokens: {bill['input_tokens']} In / {bill['output_tokens']} Out | TX Hash: <code>{bill['tx_hash']}</code></span>
+                        </div>
+                        ''', unsafe_allow_html=True)
 
                     # Security Blocks (Lobster Trap)
                     if tech.get("type") == "security_block":
@@ -359,7 +370,8 @@ with tab1:
                                 "visualization": data.get("visualization") or {},
                                 "type": data.get("type", ""),
                                 "message": data.get("message", ""),
-                                "security_info": data.get("security_info", {})
+                                "security_info": data.get("security_info", {}),
+                                "billing": data.get("billing")
                             }
                             
                             # Visualization
@@ -369,6 +381,17 @@ with tab1:
                             # Security Block Alert
                             if tech_data["type"] == "security_block":
                                 st.markdown(f'<div style="background-color:#ffe6e6; border-left: 5px solid #ff4b4b; padding:10px; margin:10px 0; border-radius:5px;"><h4 style="color:#ff4b4b; margin-top:0;">🛡️ Security Block</h4><p style="color:#8b0000; font-weight:bold;">{tech_data["message"]}</p></div>', unsafe_allow_html=True)
+                                
+                            # Billing Receipt
+                            if tech_data.get("billing"):
+                                bill = tech_data["billing"]
+                                st.markdown(f'''
+                                <div style="background-color:#f8f9fa; border-left: 5px solid #005571; padding:10px; margin:10px 0; border-radius:5px;">
+                                    <strong style="color:#005571; font-size:15px;">🪙 Nanopago Procesado (Web3 {bill['network']})</strong><br/>
+                                    <span style="font-size:14px; color:#333;">Cobro automático de <code>${bill['amount_charged']} {bill['currency']}</code></span><br/>
+                                    <span style="color:gray; font-size:12px;">Tokens: {bill['input_tokens']} In / {bill['output_tokens']} Out | TX Hash: <code>{bill['tx_hash']}</code></span>
+                                </div>
+                                ''', unsafe_allow_html=True)
                             
                             # Save to history
                             st.session_state.messages.append({
