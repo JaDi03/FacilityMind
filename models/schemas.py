@@ -98,15 +98,15 @@ class VisualizationOutput(BaseModel):
 
 
 class BillingReceipt(BaseModel):
-    """Transaction receipt for Web3 Nanopayments on ARC testnet."""
-    network: str = Field(..., description="Blockchain network (e.g., ARC Testnet)")
+    """Transaction receipt for Web3 Nanopayments on ARC testnet using x402 Protocol."""
+    network: str = Field(..., description="Blockchain network (e.g., Circle Gateway x402)")
     currency: str = Field("USDC", description="Currency used")
     input_tokens: int = Field(0, description="Estimated input tokens")
     output_tokens: int = Field(0, description="Estimated output tokens")
     amount_charged: float = Field(0.0, description="Amount charged in USDC")
-    tx_hash: str = Field(..., description="Transaction Hash")
-    wallet: str = Field(..., description="Wallet ID charged")
-    status: str = Field("PAID_AUTOMATICALLY", description="Payment status")
+    eip3009_auth: str = Field(..., description="EIP-3009 Offchain Signature")
+    tx_hash: str = Field(..., description="Offchain tracking ID")
+    settlement_status: str = Field("PENDING_BATCH_SETTLEMENT", description="Gateway status")
 
 
 class FacilityMindResponse(BaseModel):

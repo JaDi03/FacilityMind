@@ -288,8 +288,8 @@ with tab1:
                         st.markdown(f'''
                         <div style="background-color:#f8f9fa; border-left: 5px solid #005571; padding:10px; margin:10px 0; border-radius:5px;">
                             <strong style="color:#005571; font-size:15px;">🪙 Nanopago Procesado (Web3 {bill['network']})</strong><br/>
-                            <span style="font-size:14px; color:#333;">Cobro automático de <code>${bill['amount_charged']} {bill['currency']}</code></span><br/>
-                            <span style="color:gray; font-size:12px;">Tokens: {bill['input_tokens']} In / {bill['output_tokens']} Out | TX Hash: <code>{bill['tx_hash']}</code></span>
+                            <span style="font-size:14px; color:#333;">Cobro automático offchain de <code>${bill['amount_charged']} {bill['currency']}</code> via EIP-3009.</span><br/>
+                            <span style="color:gray; font-size:12px;">Auth: <code>{bill.get('eip3009_auth', '...')}</code> | Batched Settlement: {bill.get('settlement_status', 'PENDING')}</span>
                         </div>
                         ''', unsafe_allow_html=True)
 
@@ -388,8 +388,8 @@ with tab1:
                                 st.markdown(f'''
                                 <div style="background-color:#f8f9fa; border-left: 5px solid #005571; padding:10px; margin:10px 0; border-radius:5px;">
                                     <strong style="color:#005571; font-size:15px;">🪙 Nanopago Procesado (Web3 {bill['network']})</strong><br/>
-                                    <span style="font-size:14px; color:#333;">Cobro automático de <code>${bill['amount_charged']} {bill['currency']}</code></span><br/>
-                                    <span style="color:gray; font-size:12px;">Tokens: {bill['input_tokens']} In / {bill['output_tokens']} Out | TX Hash: <code>{bill['tx_hash']}</code></span>
+                                    <span style="font-size:14px; color:#333;">Cobro automático offchain de <code>${bill['amount_charged']} {bill['currency']}</code> via EIP-3009.</span><br/>
+                                    <span style="color:gray; font-size:12px;">Auth: <code>{bill.get('eip3009_auth', '...')}</code> | Batched Settlement: {bill.get('settlement_status', 'PENDING')}</span>
                                 </div>
                                 ''', unsafe_allow_html=True)
                             
