@@ -62,11 +62,45 @@ The system leverages cutting-edge capabilities of the Google Gemini API to deliv
 ## 🛠️ Multi-Agent Architecture (Orchestrated Pipeline)
 
 FacilityMind coordinates **5 specialized AI agents** to verify technical responses, enforce field safety, and protect the platform against prompt injection and malicious queries:
-<div align="center">
 
-![FacilityMind Multi-Agent Architecture](docs/assets/flow.png)
+```mermaid
+graph TD
+    %% Styling
+    classDef user fill:#2d3436,stroke:#636e72,color:#fff,stroke-width:2px,rx:10px,ry:10px;
+    classDef proxy fill:#d63031,stroke:#ff7675,color:#fff,stroke-width:2px;
+    classDef agent fill:#0984e3,stroke:#74b9ff,color:#fff,stroke-width:2px;
+    classDef db fill:#00b894,stroke:#55efc4,color:#fff,stroke-width:2px,shape:cylinder;
+    classDef ui fill:#6c5ce7,stroke:#a29bfe,color:#fff,stroke-width:2px;
 
-</div>
+    User(("🧑‍🔧 Technician")):::user
+    UI["💻 Streamlit UI"]:::ui
+    API["⚙️ FastAPI Backend"]:::ui
+    
+    Security{"🛡️ Security Agent\n(Lobster Trap DPI)"}:::proxy
+    Perception["👁️ Perception Agent\n(Gemini 2.5 Flash)"]:::agent
+    Reasoner["🧠 Reasoner Agent\n(Gemini 2.5 Pro)"]:::agent
+    Validator["✅ Validator Agent\n(Gemini 2.5 Pro)"]:::agent
+    Visualizer["📊 Visualizer Agent\n(Gemini 2.0 Flash)"]:::agent
+    
+    Chroma[("🗄️ Chroma DB\n(Vector Store)")]:::db
+    Cache[("⚡ Google Context\n(Active Memory)")]:::db
+
+    %% Flow
+    User -->|Voice / Text / Image| UI
+    UI --> API
+    API --> Security
+    Security -->|Block if Malicious| Blocked((❌ Deny))
+    Security -->|Safe Query| Perception
+    
+    Perception -->|Extract Context| Reasoner
+    
+    Reasoner <-->|Retrieve Blueprints| Chroma
+    Reasoner <-->|Analyze High-Res PDFs| Cache
+    Reasoner -->|Draft Blueprint Output| Validator
+    
+    Validator -->|LOTO / NEC Audit| Visualizer
+    Visualizer -->|Generate Schematics| UI
+```
 
 ### Core Agents:
 0. **Security Agent (Lobster Trap DPI)**: A two-stage firewall that inspects every query *before* it reaches any AI model. Stage 1 uses Python regex for instant Spanish/English threat pattern matching. Stage 2 invokes the Lobster Trap Go binary for deep prompt inspection (DPI) against a programmable YAML policy.
@@ -142,6 +176,31 @@ python start.py
 ## 🛡️ Security Architecture (Lobster Trap)
 
 FacilityMind implements a **Two-Stage AI Firewall** that inspects every user query before it reaches any AI model:
+
+```mermaid
+graph LR
+    %% Styling
+    classDef user fill:#2d3436,stroke:#636e72,color:#fff,stroke-width:2px;
+    classDef filter fill:#0984e3,stroke:#74b9ff,color:#fff,stroke-width:2px;
+    classDef go_binary fill:#d63031,stroke:#ff7675,color:#fff,stroke-width:2px;
+    classDef safe fill:#00b894,stroke:#55efc4,color:#fff,stroke-width:2px;
+    classDef block fill:#2d3436,stroke:#ff7675,color:#ff7675,stroke-width:2px,stroke-dasharray: 5 5;
+
+    Query(["💬 Incoming Query"]):::user
+    Stage1["⚙️ Stage 1: Python Pre-Filter\n(Regex Spanish/English)"]:::filter
+    Stage2["🦀 Stage 2: Lobster Trap DPI\n(Go Binary + YAML Policy)"]:::go_binary
+    
+    Gemini(["✨ Google Gemini Models"]):::safe
+    Denied(("❌ BLOCKED\n(Audit Logged)")):::block
+
+    %% Flow
+    Query --> Stage1
+    Stage1 -->|Threat Detected| Denied
+    Stage1 -->|Clean| Stage2
+    
+    Stage2 -->|Policy Violation| Denied
+    Stage2 -->|Safe| Gemini
+```
 
 ### Stage 1 — Python Regex Pre-Filter (Offline, <1ms)
 A curated set of regular expressions in Spanish and English that instantly blocks known threat patterns:
