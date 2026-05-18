@@ -479,7 +479,7 @@ with tab1:
                 
                 try:
                     # Note: We use 'data=payload' because the backend expects Form data (multipart)
-                    resp = requests.post(API_QUERY, data=payload, files=files if files else None, timeout=90)
+                    resp = requests.post(API_QUERY, data=payload, files=files if files else None, timeout=180)
                     
                     if resp.status_code == 200:
                         res = resp.json()
