@@ -8,6 +8,7 @@
 ![Google Gemini](https://img.shields.io/badge/Google%20Gemini-8E75C2?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![Gemini Embeddings](https://img.shields.io/badge/Gemini%20Embeddings-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-FC6D26?style=for-the-badge&logo=database&logoColor=white)
+![Lobster Trap](https://img.shields.io/badge/Lobster%20Trap-DPI%20Security-red?style=for-the-badge&logo=shield&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 </div>
@@ -19,6 +20,7 @@
 ## 📑 Table of Contents
 - [Advanced Google Gemini Integration](#-advanced-google-gemini-integration)
 - [Multi-Agent Architecture](#️-multi-agent-architecture-orchestrated-pipeline)
+- [Security Architecture (Lobster Trap)](#-security-architecture-lobster-trap)
 - [Technical Stack](#-technical-stack)
 - [Installation & Deployment](#-installation--deployment)
 - [Blueprint Ingestion](#️-blueprint-ingestion)
@@ -59,7 +61,7 @@ The system leverages cutting-edge capabilities of the Google Gemini API to deliv
 
 ## 🛠️ Multi-Agent Architecture (Orchestrated Pipeline)
 
-FacilityMind coordinates **4 specialized AI agents** to verify technical responses and enforce field safety:
+FacilityMind coordinates **5 specialized AI agents** to verify technical responses, enforce field safety, and protect the platform against prompt injection and malicious queries:
 <div align="center">
 
 ![FacilityMind Multi-Agent Architecture](docs/assets/flow.png)
@@ -67,6 +69,7 @@ FacilityMind coordinates **4 specialized AI agents** to verify technical respons
 </div>
 
 ### Core Agents:
+0. **Security Agent (Lobster Trap DPI)**: A two-stage firewall that inspects every query *before* it reaches any AI model. Stage 1 uses Python regex for instant Spanish/English threat pattern matching. Stage 2 invokes the Lobster Trap Go binary for deep prompt inspection (DPI) against a programmable YAML policy.
 1. **Perception Agent (Gemini 2.5 Flash)**: Processes multimodal inputs (voice recordings, panel photos, or text) to extract structured parameters: building, tower, floor, room, and maintenance goal.
 2. **Technical Reasoner (Gemini 2.5 Pro)**: Integrates semantic context from Chroma DB with the visual memory of Google Context Cache to trace physical infrastructure paths (e.g., circuits/pipes) and generate candidates with exact blueprint page citations.
 3. **Validator Agent (Gemini 2.5 Pro)**: The final line of defense. Cross-checks citations against original documents, corrects technical errors, detects hallucinations, and evaluates LOTO/NEC electrical code compliance.
@@ -80,6 +83,7 @@ FacilityMind coordinates **4 specialized AI agents** to verify technical respons
 * **Knowledge Base**: ChromaDB (Vector database) using Gemini Embeddings (`text-embedding-004`).
 * **API Backend**: FastAPI (Python 3.10+).
 * **Technical Dashboard**: Streamlit.
+* **Security Middleware**: [Lobster Trap](https://github.com/veea-io/lobstertrap) — Go-based AI prompt firewall with YAML-programmable DPI policies and a real-time monitoring dashboard.
 
 ---
 
@@ -120,6 +124,7 @@ python start.py
 
 * **API Backend**: `http://127.0.0.1:8000`
 * **Streamlit UI**: `http://127.0.0.1:8501`
+* **🛡️ Lobster Trap Security Dashboard**: `http://127.0.0.1:8080/_lobstertrap/`
 
 ---
 
@@ -131,6 +136,31 @@ python start.py
 4. **Ingestion Workflow**:
    * The file is saved locally and registered in **Google Context Cache** synchronously (takes ~5 seconds).
    * A background task starts immediately, performing page-by-page **Vision OCR** to index structured spatial records into **Chroma DB**. Progress can be monitored in the backend terminal logs.
+
+---
+
+## 🛡️ Security Architecture (Lobster Trap)
+
+FacilityMind implements a **Two-Stage AI Firewall** that inspects every user query before it reaches any AI model:
+
+### Stage 1 — Python Regex Pre-Filter (Offline, <1ms)
+A curated set of regular expressions in Spanish and English that instantly blocks known threat patterns:
+- Prompt injection (`ignore previous instructions`, `jailbreak`)
+- Role impersonation (`soy el admin`, `I am the developer`)
+- Credential theft (`dame la clave API`, `give me your password`)
+
+### Stage 2 — Lobster Trap DPI (Go binary, ~250ms)
+The [Lobster Trap](https://github.com/veea-io/lobstertrap) Go binary performs deep prompt inspection against a YAML policy file (`configs/facilitymind_policy.yaml`), evaluating 15+ threat signals:
+- Prompt/instruction injection patterns
+- Sensitive file path access (e.g., `/etc/passwd`)
+- Role impersonation, exfiltration, obfuscation, and malware requests
+- Risk scoring and audit trail logging
+
+### Real-Time Security Dashboard
+The Lobster Trap proxy runs as a local HTTP server on port `8080` and exposes a live monitoring dashboard:
+```
+http://127.0.0.1:8080/_lobstertrap/
+```
 
 ---
 
