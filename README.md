@@ -13,6 +13,10 @@
 ![USDC](https://img.shields.io/badge/USDC-Gas--Free-2775CA?style=for-the-badge&logo=usdc&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
+<br/>
+
+![FacilityMind Cute Agents](assets/facilitymind_cute_agents.png)
+
 </div>
 
 **FacilityMind** is an advanced, enterprise-grade multi-agent AI system designed to revolutionize building maintenance and facility management operations. It enables technicians and engineers to interactively and visually query complex construction blueprints (electrical, plumbing, architectural, structural) using voice, images, or text.
