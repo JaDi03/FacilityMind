@@ -161,6 +161,12 @@ def upload_blueprint(file, blueprint_id=None, blueprint_type=None):
 # ─── Session State ───
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "client_wallet_id" not in st.session_state:
+    st.session_state.client_wallet_id = None
+if "client_wallet_address" not in st.session_state:
+    st.session_state.client_wallet_address = None
+if "client_wallet_balance" not in st.session_state:
+    st.session_state.client_wallet_balance = 0.0
 
 # ─── Sidebar ───
 with st.sidebar:
@@ -187,6 +193,59 @@ with st.sidebar:
             st.success("🛡️ Lobster Active")
         else:
             st.warning("🛡️ Lobster Offline")
+
+    st.divider()
+    
+    st.markdown("<h3 style='margin-bottom:0;'>🪙 Web3 Billing & Wallet</h3>", unsafe_allow_html=True)
+    st.caption("Autosuficiencia y cobros por uso real bajo el protocolo x402 de Circle.")
+    
+    if not st.session_state.client_wallet_id:
+        if st.button("⚡ Generar Wallet de Consultas", type="primary", use_container_width=True):
+            with st.spinner("Creando wallet programable real en Circle..."):
+                try:
+                    resp = requests.post("http://localhost:8080/api/v1/billing/create-wallet", timeout=30)
+                    if resp.status_code == 200 and resp.json().get("success"):
+                        wdata = resp.json()["data"]
+                        st.session_state.client_wallet_id = wdata["wallet_id"]
+                        st.session_state.client_wallet_address = wdata["address"]
+                        st.success("¡Wallet Creada con Éxito!")
+                        st.rerun()
+                    else:
+                        st.error(f"Fallo al crear wallet: {resp.json().get('error', 'Desconocido')}")
+                except Exception as e:
+                    st.error(f"Error de red: {e}")
+    else:
+        # Mostrar detalles de la Wallet
+        st.markdown(f"""
+        <div style="background-color:#0e1117; padding:10px; border-radius:5px; border:1px solid #30363d; margin-bottom:10px;">
+            <span style="font-size:10px; color:gray; font-weight:bold;">DIRECCIÓN DE PAGO (AVAX FUJI)</span><br/>
+            <code style="font-size:11px; color:#58a6ff; word-break:break-all;">{st.session_state.client_wallet_address}</code>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Consultar saldo
+        col_bal, col_ref = st.columns([3, 1])
+        with col_bal:
+            st.markdown(f"**Saldo:** `{st.session_state.client_wallet_balance:.4f} USDC`")
+        with col_ref:
+            if st.button("🔄", key="ref_bal", use_container_width=True):
+                with st.spinner(""):
+                    try:
+                        resp = requests.get(f"http://localhost:8080/api/v1/billing/balance/{st.session_state.client_wallet_id}", timeout=10)
+                        if resp.status_code == 200 and resp.json().get("success"):
+                            st.session_state.client_wallet_balance = resp.json()["data"]["balance"]
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"{e}")
+                        
+        # Enlace al Faucet
+        st.markdown(f"""
+        <a href="https://faucet.circle.com" target="_blank" style="text-decoration:none;">
+            <button style="width:100%; border:1px solid #30363d; background-color:#161b22; color:#58a6ff; padding:5px; border-radius:5px; cursor:pointer;">
+                🚰 Ir al Faucet a Recargar USDC
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
 
     st.divider()
     
@@ -343,7 +402,8 @@ with tab1:
                     "history": historial_str,
                     "discipline": filtro_disciplina if filtro_disciplina else None,
                     "floor": filtro_piso if filtro_piso else None,
-                    "building_id": "default"
+                    "building_id": "default",
+                    "client_wallet_id": st.session_state.client_wallet_id if st.session_state.client_wallet_id else None
                 }
                 
                 files = {}

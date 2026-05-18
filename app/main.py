@@ -397,6 +397,7 @@ async def query_agents(
     building_id: str = Form("default"),
     discipline: str = Form(None),
     floor: str = Form(None),
+    client_wallet_id: str = Form(None),
     audio_file: UploadFile = File(None),
     image_file: UploadFile = File(None),
 ):
@@ -407,6 +408,7 @@ async def query_agents(
     - **building_id**: Building identifier
     - **discipline**: Optional filter (electrical, plumbing, etc.)
     - **floor**: Optional floor filter
+    - **client_wallet_id**: Optional developer-controlled wallet ID for the specific client
     - **audio_file**: Optional audio file
     - **image_file**: Optional image file
     """
@@ -656,7 +658,7 @@ async def query_agents(
         # Estimate characters for output (final response)
         output_chars = len(validator.final_response or reasoner.candidate_response) + 500
         
-        billing_receipt = X402NanopaymentGateway.process_payment(input_chars, output_chars)
+        billing_receipt = X402NanopaymentGateway.process_payment(input_chars, output_chars, client_wallet_id=client_wallet_id)
 
         response = FacilityMindResponse(
             response=validator.final_response or reasoner.candidate_response,
@@ -724,6 +726,34 @@ async def health():
     }
 
     return {"success": True, "data": status}
+
+
+# ═══════════════════════════════════════════════════════════════
+# ENDPOINTS: Circle Web3 Onboarding (x402 real)
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/api/v1/billing/create-wallet")
+async def api_create_wallet():
+    """Creates a real developer-controlled wallet for a client in the background."""
+    from app.nanopayments import X402NanopaymentGateway
+    try:
+        wallet_info = X402NanopaymentGateway.create_client_wallet()
+        return {"success": True, "data": wallet_info}
+    except Exception as e:
+        logger.error(f"[API Billing] Error creating client wallet: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/v1/billing/balance/{wallet_id}")
+async def api_get_balance(wallet_id: str):
+    """Fetches real-time USDC blockchain token balance for a specific wallet."""
+    from app.nanopayments import X402NanopaymentGateway
+    try:
+        balance = X402NanopaymentGateway.get_wallet_balance(wallet_id)
+        return {"success": True, "data": {"balance": balance}}
+    except Exception as e:
+        logger.error(f"[API Billing] Error getting balance: {e}")
+        return {"success": False, "error": str(e)}
+
 
 
 # ═══════════════════════════════════════════════════════════════
