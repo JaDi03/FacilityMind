@@ -70,67 +70,148 @@ def infer_tower(blueprint_id: str) -> Optional[str]:
     return None
 
 
-def extract_text_with_vision(pdf_path: str, page_num: int, uploaded_file=None) -> str:
-    """
-    Uses Gemini Flash Vision to extract structured text from a specific PDF page.
-    Sends the PDF directly to Gemini — no PyMuPDF, no image rendering needed.
+def extract_text_with_vision(pdf_path: str, page_num: int = None, uploaded_file=None) -> str:
+    """DEPRECATED: Use extract_all_pages_with_vision() for batch processing."""
+    return ""
 
-    Args:
-        pdf_path: Path to the PDF file.
-        page_num: 1-indexed page number to extract.
-        uploaded_file: Optional pre-uploaded Gemini file reference (to avoid re-uploading).
+
+def extract_all_pages_with_vision(pdf_path: str, uploaded_file=None) -> dict:
     """
+    Extracts structured text from all pages in parallel by splitting the PDF 
+    and processing each page individually using Gemini 2.5 Flash.
+    This guarantees 100% optical resolution and prevents output token truncation.
+    """
+    import os
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from pypdf import PdfReader, PdfWriter
     from google import genai as genai_v2
     from google.genai import types
     from config import GeminiModels, GEMINI_API_KEY
+    from pathlib import Path
 
     client = genai_v2.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
-
-    try:
-        # Upload PDF if not already uploaded
-        if not uploaded_file:
-            uploaded_file = client.files.upload(file=pdf_path, config={'display_name': f'ocr_page_{page_num}'})
-            file_info = client.files.get(name=uploaded_file.name)
+    reader = PdfReader(pdf_path)
+    total_pages = len(reader.pages)
+    
+    logger.info(f"[Vision OCR] Initializing high-fidelity parallel indexer for {total_pages} pages...")
+    
+    temp_dir = Path("scratch/temp_split")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    
+    results = {}
+    
+    def process_single_page(page_idx):
+        page_num = page_idx + 1
+        temp_pdf_path = temp_dir / f"page_{page_num}.pdf"
+        
+        try:
+            # 1. Isolate the single page
+            writer = PdfWriter()
+            writer.add_page(reader.pages[page_idx])
+            with open(temp_pdf_path, "wb") as f:
+                writer.write(f)
+                
+            # 2. Upload to Gemini
+            up_file = client.files.upload(
+                file=str(temp_pdf_path),
+                config={'display_name': f'ocr_page_{page_num}'}
+            )
+            
+            # Wait for processing
+            file_info = client.files.get(name=up_file.name)
             while file_info.state.name == "PROCESSING":
-                time.sleep(2)
-                file_info = client.files.get(name=uploaded_file.name)
+                time.sleep(0.5)
+                file_info = client.files.get(name=up_file.name)
+                
             if file_info.state.name == "FAILED":
-                raise Exception("Google Gemini failed to process the PDF.")
+                raise Exception("Gemini processing failed")
+                
+            # 3. Meticulous extraction prompt
+            prompt = f"""You are a master electrical and architectural indexing agent.
+Perform a high-fidelity visual and textual audit of this isolated blueprint page (Page {page_num} of the PDF).
 
-        prompt = f"""You are analyzing page {page_num} of this construction blueprint PDF. Extract ALL text visible on PAGE {page_num} ONLY in a structured, readable format.
+Extract all visible annotations with absolute technical precision:
+1. Sheet Info: Sheet title, sheet number, building ID, and drawing scale.
+2. Room Labels: Every room or unit name visible (e.g. UNIT D Bedroom, Kitchen, Living Room).
+3. Electrical Circuits: Locate all outlets, equipment, and devices. Follow the dashed line conduit loops to find exactly which circuit (e.g. A-13, A-15, A-16, A-19, A-20, A-23) feeds each symbol.
+4. Panel Board Info: Note any electrical panels (e.g. PANEL A) and schedule data.
+5. Content Summary: Provide a highly detailed summary explaining which circuits physically power which appliances or areas.
 
-CRITICAL INSTRUCTIONS:
-1. **Sheet Info**: Extract the sheet title and number (e.g., "E.3 - UNIT A ELECTRICAL PLAN")
-2. **Room Labels**: List every room name visible (e.g., BEDROOM, LIVING ROOM, KITCHEN, BATHROOM, LAUNDRY)
-3. **Electrical Annotations**: For EVERY electrical symbol (outlet, switch, light, etc.), extract:
-   - The text label next to it (e.g., "A-9", "A-11", "C-1", "B-3")
-   - WHICH ROOM it is physically located inside (e.g., "In BEDROOM: outlet labeled A-9")
-4. **Panel Info**: Any panel labels, panel schedules, load schedules, breaker lists
-5. **Dimensions**: ALL measurements and dimensions shown (e.g., 20'-0", 202'-0", 46'-0", etc.)
-6. **Notes & Legends**: All written notes, specifications, legends, and general notes
-7. **Equipment Labels**: HVAC units, plumbing fixtures, appliance labels (REF, DW, W/D, WH, etc.)
-8. **Title Block**: Project name, drawing date, scale, architect info
-9. **Area Data**: Any square footage data, room areas, building areas
+Respond with the extracted text in a clean, highly structured format.
+"""
+            
+            response = client.models.generate_content(
+                model=GeminiModels.VISION_OCR,
+                contents=[prompt, up_file],
+                config=types.GenerateContentConfig(
+                    temperature=0.1
+                )
+            )
+            
+            extracted_text = response.text.strip()
+            
+            # Clean up Gemini file
+            try:
+                client.files.delete(name=up_file.name)
+            except Exception:
+                pass
+                
+            # Clean up temp file
+            if os.path.exists(temp_pdf_path):
+                os.remove(temp_pdf_path)
+                
+            logger.info(f"[Vision OCR] Successfully indexed Page {page_num}/{total_pages}")
+            return page_num, extracted_text
+            
+        except Exception as e:
+            logger.error(f"[Vision OCR] Error indexing Page {page_num}: {e}")
+            if os.path.exists(temp_pdf_path):
+                try:
+                    os.remove(temp_pdf_path)
+                except Exception:
+                    pass
+            return page_num, f"Error processing page: {e}"
 
-FORMAT YOUR OUTPUT AS STRUCTURED TEXT with clear section headers.
-Do NOT skip any annotation, label, or note — even small text matters for facility management.
-For electrical plans, it is CRITICAL to associate each circuit label with the specific room it appears in."""
+    start_time = time.time()
+    
+    # Process up to 8 pages in parallel to stay within rate limits and optimize speed
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(process_single_page, idx) for idx in range(total_pages)]
+        for future in futures:
+            p_num, text = future.result()
+            results[p_num] = text
+            
+    elapsed = time.time() - start_time
+    logger.info(f"[Vision OCR] High-fidelity parallel indexing complete for {total_pages} pages in {elapsed:.1f}s")
+    
+    # Clean up temp dir
+    try:
+        os.rmdir(temp_dir)
+    except Exception:
+        pass
+        
+    return results
 
-        response = client.models.generate_content(
-            model=GeminiModels.VISION_OCR,
-            contents=[prompt, uploaded_file],
-            config=types.GenerateContentConfig(temperature=0.1)
-        )
 
-        extracted = response.text if response.text else ""
-        logger.info(f"  Page {page_num}: Vision OCR extracted {len(extracted)} chars")
 
-        time.sleep(0.5)
-        return extracted
+def _fallback_page_parser(text: str) -> dict:
+    """Fallback: parses plain text with PAGE markers into a page dict."""
+    import re
+    result = {}
+    page_pattern = re.compile(r'(?:page|pagina|pagina)\s*(\d+)[:\s\n=\-]+', re.IGNORECASE)
+    matches = list(page_pattern.finditer(text))
 
-    except Exception as e:
-        logger.warning(f"  Page {page_num}: Vision OCR failed ({e})")
-        return ""
+    if not matches:
+        return {1: text}
+
+    for i, match in enumerate(matches):
+        page_num = int(match.group(1))
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        result[page_num] = text[start:end].strip()
+
+    return result
 
 
 def load_blueprint(

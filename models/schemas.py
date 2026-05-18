@@ -30,6 +30,7 @@ class PerceptionOutput(BaseModel):
     urgency_notes: Optional[str] = Field(None, description="Urgency or risk keywords detected")
     detected_language: str = Field("en", description="Primary input language (en, es, etc.)")
     perception_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Overall perception confidence level (0-1)")
+    intent_classification: str = Field("technical_query", description="Intent: technical_query, conversational, meta_query, off_topic, ambiguous, credential_extraction")
     raw_transcription: Optional[str] = Field(None, description="Raw audio transcription (if applicable)")
 
 

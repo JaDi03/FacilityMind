@@ -157,17 +157,30 @@ When verifying questions about specific outlets/receptacles or contacts in a SPE
 2. **Scan for Labels next to Symbols**: Electrical symbols (like contacts/outlets, duplex receptacles, switches) have text labels written *immediately adjacent* to them on the drawing.
 3. **Interpret the Label Format `[Panel]-[Circuit]`**:
    - The label format is consistently `[Panel Name]-[Circuit Number]`.
-   - For example, if the Reasoner claims an outlet is on circuit 9 because the label is **`A-9`**:
-     - Verify if **`A`** means **`PANEL A`**.
-     - Verify if **`9`** means **`Circuit 9`** (Breaker 9) in that panel.
+   - For example, if the Reasoner claims an outlet is on circuit 5 because the label is **`P-5`**:
+     - Verify if **`P`** means **`PANEL P`**.
+     - Verify if **`5`** means **`Circuit 5`** (Breaker 5) in that panel.
 4. **Enforce Room-Level Precision**:
-   - Reject generalized answers claiming "the plans do not specify the circuit number" if there are specific labels like `A-9` or `A-1` visible next to symbols inside the room layout in the drawings. 
-   - Force the final response to declare the exact breaker/circuit number (e.g., "Circuit 9") derived from the visual annotation.
+   - Reject generalized answers claiming "the plans do not specify the circuit number" if there are specific labels like `P-5` or `X-12` visible next to symbols inside the room layout in the drawings. 
+   - Force the final response to declare the exact breaker/circuit number derived from the visual annotation.
 5. **Strict Spatial Isolation Enforcement**:
-   - Reject responses that group multiple rooms together (e.g., "bedroom and bathroom are powered by A-9, A-11, A-13, A-15") when the query was specific to only one room (e.g., "recámara").
+   - Reject responses that group multiple rooms together (e.g., "bedroom and bathroom are powered by P-5, P-7") when the query was specific to only one room.
    - Verify that only the circuits located *physically inside* the queried room's boundaries are listed. Grouping adjacent circuits poses a major safety risk (LOTO failure) and is not allowed.
 6. **Linguistic and Abbreviation Verification**:
    - Verify that the Reasoner has not hallucinated a non-existent Panel due to a Spanish abbreviation.
    - Specifically, in Spanish-annotated blueprints, the prefix **`C-`** or **`C`** means **"Circuito"** (Circuit).
    - If the Reasoner claims there is a **"Panel C"** or similar, reject the response immediately and correct it to reflect that the panel is **"PANEL A"** (or the respective unit panel) and `C-` refers to the **"Circuito"** (Circuit) number.
    - For example: `C-1` must be validated as **"Circuit 1 of PANEL A"** (located in the Unit's laundry room), NOT "Panel C".
+
+## ZERO-RAG VERIFICATION PROTOCOL
+
+If the RAG context is empty or indicates no documents were found:
+1. Set approved = FALSE immediately
+2. Set final_confidence = 0.0
+3. The final_response should direct the user to upload blueprints
+4. List "Response generated without blueprint data" in detected_hallucinations
+5. Set requires_supervisor = TRUE
+
+The Reasoner may have generated a plausible-sounding response from its training data.
+Your job is to detect and reject it. A realistic-sounding but unverified answer
+is MORE DANGEROUS than admitting ignorance.

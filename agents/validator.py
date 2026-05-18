@@ -72,11 +72,17 @@ async def agente_validador(
 
     # --- Build Prompt & Execute Gemini Pro ---
     
-    # --- SAFETY CHECK: Auto-reject if no blueprint data available ---
-    # If there's no cache AND no real blueprint text, the Validator cannot verify anything.
-    # Calling Gemini would just rubber-stamp the Reasoner's (potentially hallucinated) answer.
-    if not active_cache and plano_texto == "(Original blueprint text not available for verification)":
-        logger.warning("[Validator] ABORT: No cache and no blueprint text. Auto-rejecting to prevent approval of unverified data.")
+    # --- SAFETY CHECK: Auto-reject if no real blueprint data available ---
+    # If there's no cache AND no RAG context with actual content, the Validator
+    # cannot verify anything. Auto-reject regardless of what the Reasoner claimed.
+    has_real_data = (
+        active_cache or
+        (contexto_rag and len(contexto_rag.strip()) > 50 and
+         "no relevant document" not in contexto_rag.lower())
+    )
+
+    if not has_real_data:
+        logger.warning("[Validator] ABORT: No verifiable data. Auto-rejecting.")
         return ValidatorOutput(
             approved=False,
             final_response=reasoner.candidate_response,
@@ -134,6 +140,14 @@ Generate your validation in the specified strict JSON format.
             except Exception as e:
                 logger.warning(f"[Validator] Cache request failed ({e}). Falling back to traditional verification.")
                 active_cache = None
+                
+                # CRITICAL FIX: Reload the text for fallback if we cleared it!
+                if plano_texto == "(Original blueprint text not available for verification)" or not plano_texto.strip():
+                    if plano_completo_path and os.path.exists(plano_completo_path):
+                        from ingestion.pdf_loader import load_blueprint_as_text
+                        plano_texto = load_blueprint_as_text(plano_completo_path)
+                    elif contexto_rag:
+                        plano_texto = contexto_rag
                 
         if not active_cache:
             # SAFETY CHECK FOR FALLBACK: If cache failed and we don't have text, do NOT call Gemini!

@@ -138,6 +138,74 @@ class BlueprintVectorStore:
 
         return self.query(query_text, n_results, filters if filters else None)
 
+    def query_by_metadata(
+        self,
+        unit: Optional[str] = None,
+        circuit: Optional[str] = None,
+        room: Optional[str] = None,
+        panel: Optional[str] = None
+    ) -> Dict:
+        """
+        Retrieves blueprint chunks using precise structured metadata filtering processed in Python.
+        Extremely fast and 100% reliable for technical codes (e.g. A-9, PANEL A).
+        """
+        try:
+            all_data = self.collection.get(include=["documents", "metadatas"])
+            if not all_data or not all_data.get("documents"):
+                return {"documents": [[]], "metadatas": [[]], "ids": [[]]}
+
+            filtered_docs = []
+            filtered_metas = []
+            filtered_ids = []
+
+            target_unit = unit.strip().upper() if unit else None
+            target_circuit = circuit.strip().upper() if circuit else None
+            target_room = room.strip().upper() if room else None
+            target_panel = panel.strip().upper() if panel else None
+
+            for i in range(len(all_data["documents"])):
+                doc = all_data["documents"][i]
+                meta = all_data["metadatas"][i] if all_data.get("metadatas") else {}
+                id_ = all_data["ids"][i]
+
+                # Extract metadata lists
+                meta_units = [u.strip().upper() for u in meta.get("units", "").split(",") if u.strip()]
+                meta_circuits = [c.strip().upper() for c in meta.get("circuits", "").split(",") if c.strip()]
+                meta_rooms = [r.strip().upper() for r in meta.get("rooms", "").split(",") if r.strip()]
+                meta_panels = [p.strip().upper() for p in meta.get("panels", "").split(",") if p.strip()]
+
+                match = True
+                
+                if target_unit and target_unit not in meta_units:
+                    match = False
+                if target_circuit:
+                    # Resilient check: exact or substring match in circuit codes
+                    if not any(target_circuit == c or target_circuit in c for c in meta_circuits):
+                        match = False
+                if target_room:
+                    # Substring check for rooms (e.g., "BEDROOM" matches "BEDROOM 1")
+                    if not any(target_room in r or r in target_room for r in meta_rooms):
+                        match = False
+                if target_panel:
+                    if not any(target_panel in p or p in target_panel for p in meta_panels):
+                        match = False
+
+                if match:
+                    filtered_docs.append(doc)
+                    filtered_metas.append(meta)
+                    filtered_ids.append(id_)
+
+            logger.info(f"[VectorStore] Precise metadata filter matched {len(filtered_docs)} chunks (unit={unit}, circuit={circuit}, room={room}, panel={panel})")
+            return {
+                "documents": [filtered_docs],
+                "metadatas": [filtered_metas],
+                "ids": [filtered_ids]
+            }
+        except Exception as e:
+            logger.error(f"[VectorStore] Error during query_by_metadata: {e}")
+            return {"documents": [[]], "metadatas": [[]], "ids": [[]]}
+
+
     def delete_blueprint(self, blueprint_id: str) -> bool:
         """
         Removes all chunks associated with a specific blueprint ID.

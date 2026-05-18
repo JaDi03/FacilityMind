@@ -53,32 +53,69 @@ async def agente_razonador(
     logger.info(f"[Reasoner] Query: {query[:100]}...")
     
     contexto_rag = ""
-    if not active_cache:
-        # Apply filters to enhance precision
-        discipline = perception.discipline if perception.discipline else None
-        floor = perception.floor if perception.floor else None
-    
-        try:
-            results = vector_store.query_with_discipline_filter(
-                query_text=query,
-                discipline=discipline,
-                floor=floor,
-                n_results=10
-            )
-            contexto_rag = _formatear_rag(results)
-            
-            # Fallback: Si el filtro fue muy estricto y no encontró nada, buscar en todos los planos
-            if len(contexto_rag.strip()) == 0 and (discipline or floor):
-                logger.info("[Reasoner] Filtered query returned 0 results. Falling back to unfiltered search across ALL blueprints.")
-                results = vector_store.query(query, n_results=10)
+    # ALWAYS retrieve RAG context to provide precise textual guidance and focus for Gemini
+    if True:
+        import re
+        
+        # Precise technical extraction of circuits and units from all perception outputs
+        texts_to_check = [
+            perception.query_objective,
+            perception.room or "",
+            perception.detected_object or "",
+            perception.raw_transcription or ""
+        ]
+        combined_text = " ".join([t for t in texts_to_check if t])
+        
+        # Regex for circuit patterns (matches "A-9", "A 10", "A9", etc. with high precision)
+        circuit_match = re.search(r'\b([A-Z])\s*[-–—]?\s*(\d+)\b', combined_text, re.IGNORECASE)
+        circuit = f"{circuit_match.group(1).upper()}-{circuit_match.group(2)}" if circuit_match else None
+        
+        # Regex for unit patterns (matches "UNIT B", "UNIDAD B", "UNITB")
+        unit_match = re.search(r'\b(?:UNIT|UNIDAD)\s*([A-G])\b', combined_text, re.IGNORECASE)
+        unit = f"UNIT {unit_match.group(1).upper()}" if unit_match else None
+
+        logger.info(f"[Reasoner] Extracted filters from text: unit={unit}, circuit={circuit}")
+        
+        results = None
+        # Try structured metadata index query first if any key filter is extracted
+        if circuit or unit:
+            try:
+                logger.info(f"[Reasoner] Running precise metadata search for unit={unit}, circuit={circuit}")
+                results = vector_store.query_by_metadata(unit=unit, circuit=circuit)
+                if results and results.get("documents") and len(results["documents"][0]) > 0:
+                    contexto_rag = _formatear_rag(results)
+                    logger.info(f"[Reasoner] Precise metadata search succeeded. Found {len(results['documents'][0])} chunks.")
+            except Exception as e:
+                logger.warning(f"[Reasoner] Error during precise metadata search: {e}")
+
+        # Fallback: Use standard semantic embedding RAG query if no metadata match was found
+        if not contexto_rag:
+            logger.info("[Reasoner] Falling back to semantic embedding search.")
+            discipline = perception.discipline if perception.discipline else None
+            floor = perception.floor if perception.floor else None
+        
+            try:
+                results = vector_store.query_with_discipline_filter(
+                    query_text=query,
+                    discipline=discipline,
+                    floor=floor,
+                    n_results=10
+                )
                 contexto_rag = _formatear_rag(results)
                 
-        except Exception as e:
-            logger.warning(f"[Reasoner] Error during filtered query, falling back to unfiltered: {e}")
-            results = vector_store.query(query, n_results=10)
-            contexto_rag = _formatear_rag(results)
+                # Filter strict fallback
+                if len(contexto_rag.strip()) == 0 and (discipline or floor):
+                    logger.info("[Reasoner] Filtered query returned 0 results. Falling back to unfiltered search across ALL blueprints.")
+                    results = vector_store.query(query, n_results=10)
+                    contexto_rag = _formatear_rag(results)
+                    
+            except Exception as e:
+                logger.warning(f"[Reasoner] Error during filtered query, falling back to unfiltered: {e}")
+                results = vector_store.query(query, n_results=10)
+                contexto_rag = _formatear_rag(results)
     
         logger.info(f"[Reasoner] RAG context retrieved: {len(contexto_rag)} characters")
+
 
     # --- 2. Long-Context Blueprint Analysis ---
     plano_texto = ""
@@ -93,24 +130,43 @@ async def agente_razonador(
     if active_cache:
         plano_texto = ""
 
-    # --- SAFETY CHECK: Refuse to answer if no data is available ---
-    # If there's no cache, no RAG data, and no full blueprint text, 
-    # the model would hallucinate a complete answer. Abort early.
-    if not active_cache and len(contexto_rag.strip()) == 0 and len(plano_texto.strip()) == 0:
-        logger.warning("[Reasoner] ABORT: No cache, no RAG data, no blueprint text. Refusing to fabricate an answer.")
+    # --- SAFETY CHECK: Refuse to answer if no verifiable data is available ---
+    # We abort ONLY if there is no cache, no RAG data, and no raw blueprint text.
+    # If there is an active_cache, Gemini has access to the full PDF and CAN answer natively.
+    rag_is_empty = len(contexto_rag.strip()) == 0
+    blueprint_is_empty = len(plano_texto.strip()) == 0
+
+    if not active_cache and rag_is_empty and blueprint_is_empty:
+        logger.warning("[Reasoner] ABORT: No active cache, no RAG data, and no blueprint text.")
         return ReasonerOutput(
             candidate_response=(
-                "No tengo acceso a los planos en este momento. "
-                "Por favor, sube el archivo PDF del plano en la barra lateral de Streamlit "
-                "y vuelve a realizar tu consulta."
+                "No tengo informacion verificable para responder esta consulta. "
+                "El sistema no encontro datos relevantes en los planos cargados. "
+                "Por favor verifica que: (1) hay planos cargados, "
+                "(2) la consulta esta relacionada con los planos disponibles."
             ),
             sources=[],
             initial_confidence=0.05,
-            technical_warnings=["No blueprint data available — response would be fabricated"]
+            technical_warnings=["No blueprint data available - response deliberately withheld"],
+            rag_context=contexto_rag
+        )
+
+    # Additional safety: if RAG is empty but we have cache, add a strong warning
+    if rag_is_empty and active_cache:
+        logger.warning("[Reasoner] WARNING: RAG empty but cache active. "
+                      "Adding anti-hallucination constraint.")
+        # Add constraint to prompt
+        perception.query_objective = (
+            f"{perception.query_objective}\n\n"
+            f"CRITICAL CONSTRAINT: The RAG database returned ZERO results for this query. "
+            f"You MUST ONLY answer using information you can directly verify from the "
+            f"cached blueprint. If you cannot find the specific answer in the blueprint, "
+            f"state EXPLICITLY: 'No encontrado en la documentacion disponible.' "
+            f"DO NOT fabricate any measurements, circuit numbers, or specifications."
         )
 
     # --- 3. Prompt Construction & Gemini Pro Execution ---
-    prompt = _construir_prompt(perception, contexto_rag, plano_texto, historial)
+    prompt = _construir_prompt(perception, contexto_rag, plano_texto, historial, has_cache=bool(active_cache))
 
     try:
         import asyncio
@@ -139,6 +195,14 @@ async def agente_razonador(
             except Exception as e:
                 logger.warning(f"[Reasoner] Cache request failed ({e}). Falling back to traditional RAG.")
                 active_cache = None
+                # CRITICAL FIX: Reload the text we cleared earlier!
+                if not plano_texto:
+                    if plano_completo_path and os.path.exists(plano_completo_path):
+                        plano_texto = load_blueprint_as_text(plano_completo_path)
+                    else:
+                        plano_texto = _buscar_plano_automatico(perception, building_id)
+                # Rebuild prompt with the newly loaded text and no cache
+                prompt = _construir_prompt(perception, contexto_rag, plano_texto, historial, has_cache=False)
                 
         if not active_cache:
             # --- Traditional RAG Execution ---
@@ -282,7 +346,7 @@ def _buscar_plano_automatico(perception: PerceptionOutput, building_id: str) -> 
     return plano_texto
 
 
-def _construir_prompt(perception: PerceptionOutput, contexto_rag: str, plano_texto: str, historial: Optional[str] = None) -> str:
+def _construir_prompt(perception: PerceptionOutput, contexto_rag: str, plano_texto: str, historial: Optional[str] = None, has_cache: bool = False) -> str:
     """Constructs the final prompt for the Reasoner Agent."""
 
     historial_text = ""
@@ -307,6 +371,10 @@ RELEVANT BLUEPRINT FRAGMENTS (RAG):
         prompt += f"""
 FULL BLUEPRINT TEXT (Long context for cross-verification):
 {plano_texto}
+"""
+    elif has_cache:
+        prompt += """
+FULL BLUEPRINT PDF: Provided directly via the context cache. You have full high-fidelity visual and text access to the entire 32-page blueprint PDF. Trace physical lines, curves, and dashed loops to verify connections between rooms, panels, and circuits.
 """
     else:
         prompt += """

@@ -62,16 +62,27 @@ async def lifespan(app: FastAPI):
     vector_store = BlueprintVectorStore(persist_path=CHROMA_PATH, collection=COLLECTION_NAME)
     logger.info(f"📦 VectorStore ready: {vector_store.count_chunks()} existing chunks")
 
-    # Load persisted loaded_blueprints if exists
+    # Clear state on startup as requested
     persisted_path = Path("data/processed/loaded_blueprints.json")
     if persisted_path.exists():
         try:
-            import json
-            with open(persisted_path, "r", encoding="utf-8") as f:
-                loaded_blueprints.update(json.load(f))
-            logger.info(f"📂 Loaded {len(loaded_blueprints)} persisted blueprints from disk")
+            persisted_path.unlink()
+            loaded_blueprints.clear()
+            logger.info("🧹 Wiped loaded_blueprints.json for a clean start.")
         except Exception as e:
-            logger.warning(f"⚠️ Failed to load persisted blueprints: {e}")
+            logger.warning(f"⚠️ Failed to wipe loaded_blueprints.json: {e}")
+            
+    # Wipe Chroma DB collection to prevent phantom documents
+    try:
+        vector_store.client.delete_collection(vector_store.collection_name)
+        vector_store.collection = vector_store.client.get_or_create_collection(
+            name=vector_store.collection_name,
+            embedding_function=vector_store.embedding_func,
+            metadata={"hnsw:space": "cosine"}
+        )
+        logger.info("🧹 Wiped Chroma DB for a clean start.")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to wipe Chroma DB: {e}")
 
     yield
 
@@ -114,51 +125,58 @@ class ConsultaResponse(BaseModel):
     error: str = None
 
 
-def ejecutar_ocr_visual_background(pdf_path: str, blueprint_id: str, building_id: str, blueprint_type: str):
-    """
-    Background task to run Vision OCR on ALL pages of a blueprint PDF and index them into Chroma DB.
-    Uses Gemini's native PDF processing — no PyMuPDF dependency.
-    """
+def ejecutar_ocr_visual_background(pdf_path: str, blueprint_id: str,
+                                     building_id: str, blueprint_type: str):
+    """Background task: BATCH Vision OCR (single API call, 60-120s)."""
     import time
+    import os
     from google import genai as genai_v2
     from config import GEMINI_API_KEY
-    from ingestion.pdf_loader import extract_text_with_vision, infer_floor, infer_tower, _count_pdf_pages
+    from ingestion.pdf_loader import (
+        extract_all_pages_with_vision, infer_floor, infer_tower, _count_pdf_pages
+    )
     from ingestion.chunker import create_intelligent_chunks
     from ingestion.vector_store import BlueprintVectorStore
-    
-    logger.info(f"[Background OCR] Starting Vision OCR for {blueprint_id} (All pages)...")
+    from pathlib import Path
+
+    logger.info(f"[Background OCR] Starting BATCH for {blueprint_id}...")
+    start_total = time.time()
+
     try:
         total_pages = _count_pdf_pages(pdf_path)
-        
-        # Upload PDF to Gemini ONCE, reuse for all page extractions
-        client = genai_v2.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
-        uploaded_file = client.files.upload(file=pdf_path, config={'display_name': f'{blueprint_id}_ocr'})
-        
+
+        client = genai_v2.Client(api_key=GEMINI_API_KEY,
+                                 http_options={'api_version': 'v1beta'})
+        uploaded_file = client.files.upload(
+            file=pdf_path, config={'display_name': f'{blueprint_id}_ocr'}
+        )
+
         file_info = client.files.get(name=uploaded_file.name)
         while file_info.state.name == "PROCESSING":
             time.sleep(2)
             file_info = client.files.get(name=uploaded_file.name)
-        
+
         if file_info.state.name == "FAILED":
-            raise Exception("Google Gemini failed to process the PDF document.")
-        
-        logger.info(f"[Background OCR] PDF uploaded to Gemini. Processing {total_pages} pages...")
-        
+            raise Exception("Google Gemini failed to process the PDF.")
+
+        logger.info(f"[Background OCR] Processing {total_pages} pages in ONE call...")
+
+        # BATCH: ONE API call for ALL pages
+        pages_data = extract_all_pages_with_vision(pdf_path,
+                                                    uploaded_file=uploaded_file)
+
         vector_store = BlueprintVectorStore()
         vision_pages_processed = 0
-        
+
         for page_num in range(1, total_pages + 1):
-            logger.info(f"[Background OCR] Processing Page {page_num}/{total_pages} with Vision OCR...")
-            
-            # Extract structured text using Gemini's native PDF understanding
-            vision_text = extract_text_with_vision(pdf_path, page_num, uploaded_file=uploaded_file)
-            
+            vision_text = pages_data.get(page_num, "")
+
             if vision_text.strip():
                 page_floor = infer_floor(blueprint_id, page_num - 1, total_pages)
                 tower = infer_tower(blueprint_id)
-                
+
                 doc_dict = {
-                    "text": f"[PDF Page {page_num} — Vision OCR]\n{vision_text}",
+                    "text": f"[PDF Page {page_num} - Vision OCR]\n{vision_text}",
                     "metadata": {
                         "blueprint_id": str(blueprint_id),
                         "blueprint_type": str(blueprint_type if blueprint_type else "general"),
@@ -172,16 +190,15 @@ def ejecutar_ocr_visual_background(pdf_path: str, blueprint_id: str, building_id
                     },
                     "id": f"{blueprint_id}_p{page_num}"
                 }
-                
-                # Chunk and index immediately
-                chunks = create_intelligent_chunks([doc_dict], include_tables=True, include_sections=False)
+
+                chunks = create_intelligent_chunks([doc_dict], include_tables=True,
+                                                    include_sections=False)
                 vector_store.add_chunks(chunks)
                 vision_pages_processed += 1
-                logger.info(f"[Background OCR] Page {page_num}/{total_pages} indexed into Chroma.")
-            
-            # Rate limit guard (avoid 429 Resource Exhausted)
-            time.sleep(1.5)
-        
+                logger.info(f"[Background OCR] Page {page_num}/{total_pages} indexed.")
+            else:
+                logger.info(f"[Background OCR] Page {page_num}/{total_pages} - no text.")
+
         # Clean up the temporary OCR upload
         try:
             client.files.delete(name=uploaded_file.name)
@@ -464,52 +481,129 @@ async def query_agents(
             photo_path=imagen_path
         )
         
-        # ═══════════════════════════════════════════════════════
-        # SEMANTIC ROUTING (Conversational vs Technical)
-        # ═══════════════════════════════════════════════════════
-        conversational_keywords = ["hola", "qué plano", "que plano", "gracias", "quién eres", "quien eres", "cuál plano", "cual plano"]
-        is_conversational = any(kw in query_text.lower() for kw in conversational_keywords)
-        
+        # ======================================================
+        # EARLY EXIT GATES - Skip 4-agent pipeline when possible
+        # ======================================================
+
+        # GATE 1: Conversational / Meta queries -> Fast response
+        conversational_intents = {"conversational", "meta_query"}
+        conv_keywords = ["hola", "que plano", "gracias",
+                         "quien eres", "cual plano", "que puedes",
+                         "buenos dias", "buenas tardes", "adios", "chao"]
+        is_conversational = (
+            perception.intent_classification in conversational_intents
+            or any(kw in query_text.lower() for kw in conv_keywords)
+        )
+
         if is_conversational and not image_file and not audio_file:
-            logger.info("[Pipeline] Query routed to Conversational Agent (skipping technical pipeline)")
+            logger.info(f"[Pipeline] GATE 1: {perception.intent_classification}")
+
+            plano_info = ""
+            if loaded_blueprints:
+                last = list(loaded_blueprints.values())[-1]
+                plano_info = (f"Plano activo: {last.get('blueprint_id', 'N/A')} "
+                              f"({last.get('blueprint_type', 'general')}, "
+                              f"{last.get('total_pages', 0)} paginas).")
+            else:
+                plano_info = "No hay planos cargados."
+
+            quick_prompt = f"Eres FacilityMind, asistente tecnico. " \
+                           f"El usuario dice: '{query_text}'. " \
+                           f"Estado: {plano_info}. " \
+                           f"Responde amable y conciso (max 2 oraciones) en espanol."
+
             import google.generativeai as genai
             model = genai.GenerativeModel("models/gemini-2.5-flash")
-            
-            chat_context = f"Chat History:\n{history}\n\n" if history else ""
-            plano_info = "No blueprints loaded."
-            if loaded_blueprints:
-                plano_info = f"Active blueprint: ID {list(loaded_blueprints.values())[-1].get('blueprint_id', 'Desconocido')}."
-                
-            prompt = f"You are the FacilityMind Orchestrator. {chat_context} The user says: '{query_text}'. Respond in a friendly, concise, and helpful way (max 1 paragraph) in the user's language (Spanish). Current system state: {plano_info}."
-            
-            quick_response = await model.generate_content_async(prompt)
+            quick_response = await model.generate_content_async(quick_prompt)
             elapsed_ms = int((time.time() - start_time) * 1000)
-            
+
             return {
                 "success": True,
                 "data": FacilityMindResponse(
                     response=quick_response.text,
                     sources=[],
                     confidence=1.0,
-                    warnings=["Direct conversational response (no technical analysis)"],
+                    warnings=[f"Respuesta conversacional ({perception.intent_classification})"],
                     requires_supervisor=False,
                     processing_time_ms=elapsed_ms
                 ).model_dump()
             }
 
-        # Abort if perception confidence is too low ONLY when multimodal media is uploaded.
-        # If it's a pure text query, we let it pass to the Reasoner (Gemini Pro) to answer building-wide or abstract queries.
-        if (audio_file or image_file) and perception.perception_confidence < Thresholds.PERCEPTION_MIN:
+        # GATE 2: Off-topic -> Polite rejection
+        if perception.intent_classification == "off_topic":
+            logger.info("[Pipeline] GATE 2: off_topic")
             elapsed_ms = int((time.time() - start_time) * 1000)
             return {
                 "success": True,
                 "data": FacilityMindResponse(
-                    response="I couldn't fully understand your query. Please provide a clearer photo or more details about the location and your requirement.",
+                    response=(
+                        "Soy FacilityMind, especializado en planos de construccion. "
+                        "No puedo ayudar con preguntas fuera de ese contexto. "
+                        "Necesitas consultar algun plano o circuito?"
+                    ),
+                    sources=[],
+                    confidence=1.0,
+                    warnings=["Off-topic query rejected"],
+                    requires_supervisor=False,
+                    processing_time_ms=elapsed_ms
+                ).model_dump()
+            }
+
+        # GATE 3: Ambiguous with very low confidence -> Ask for clarification
+        if (perception.intent_classification == "ambiguous" and
+                perception.perception_confidence < 0.20):
+            logger.info("[Pipeline] GATE 3: ambiguous + low confidence")
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            return {
+                "success": True,
+                "data": FacilityMindResponse(
+                    response=(
+                        "No entendi bien tu consulta. Puedes proporcionar mas detalles? "
+                        "Por ejemplo: en que piso y habitacion estas? "
+                        "Que equipo o instalacion necesitas consultar?"
+                    ),
                     sources=[],
                     confidence=perception.perception_confidence,
-                    warnings=["Low confidence in multimodal perception"],
-                    requires_supervisor=True,
+                    warnings=["Consulta ambigua - se requieren mas detalles"],
+                    requires_supervisor=False,
                     debug={"perception": perception.model_dump()},
+                    processing_time_ms=elapsed_ms
+                ).model_dump()
+            }
+
+        # GATE 4: Credential extraction -> Block
+        if perception.intent_classification == "credential_extraction":
+            logger.warning("[Pipeline] GATE 4: credential_extraction blocked")
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            return {
+                "success": True,
+                "data": FacilityMindResponse(
+                    response="No puedo proporcionar credenciales ni claves de API.",
+                    sources=[],
+                    confidence=0,
+                    warnings=["Intento de extraccion de credenciales bloqueado"],
+                    requires_supervisor=True,
+                    safety=SafetyAssessment(
+                        risk_level="high",
+                        risk_description="Credential extraction attempt"
+                    ),
+                    processing_time_ms=elapsed_ms
+                ).model_dump()
+            }
+
+        # GATE 5: Technical query but no blueprints -> Early reject
+        if (perception.intent_classification == "technical_query"
+                and not loaded_blueprints and not active_cache):
+            logger.info("[Pipeline] GATE 5: no blueprints available")
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            return {
+                "success": True,
+                "data": FacilityMindResponse(
+                    response="No hay planos cargados en el sistema. Por favor, sube un archivo PDF primero.",
+                    sources=[],
+                    confidence=0.0,
+                    warnings=["No blueprints available to answer technical query"],
+                    requires_supervisor=False,
                     processing_time_ms=elapsed_ms
                 ).model_dump()
             }
